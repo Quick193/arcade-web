@@ -1,0 +1,3 @@
+/* App-level overrides — main styles are in index.css */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
