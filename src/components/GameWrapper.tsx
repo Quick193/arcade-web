@@ -3,6 +3,44 @@ import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
 import type { DemoMode } from '../store/types';
 
+function ExitConfirmSheet({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.75)' }}
+      onClick={onCancel}
+    >
+      <div
+        className="card w-full max-w-sm p-4 pb-safe animate-bounce-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-1 text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+          Leave game?
+        </div>
+        <div className="mb-4 text-xs" style={{ color: 'var(--text-muted)' }}>
+          Your progress in this session won't be saved.
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={onCancel}
+            className="pressable h-11 rounded-2xl text-sm font-semibold"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', border: '1px solid var(--card-border)' }}
+          >
+            Keep Playing
+          </button>
+          <button
+            onClick={onConfirm}
+            className="pressable h-11 rounded-2xl text-sm font-black"
+            style={{ background: 'var(--accent-red)', color: '#fff' }}
+          >
+            Leave
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface GameWrapperProps {
   title: string;
   score?: number | string;
@@ -20,6 +58,7 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
   const { state, navigate } = useApp();
   const gameId = state.activeGame;
   const [showDemoSheet, setShowDemoSheet] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
   const demo = useAIDemo(gameId ?? '__global__');
 
   const demoLabels: Record<DemoMode, string> = {
@@ -61,7 +100,7 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
       <div className="px-3 pt-2 pb-safe flex-shrink-0" style={{ background: 'var(--bg-secondary)', borderTop: '1px solid var(--card-border)' }}>
         <div className="grid grid-cols-3 gap-2">
           <button
-            onClick={() => navigate('menu')}
+            onClick={() => setShowExitConfirm(true)}
             className="pressable h-11 rounded-2xl text-sm font-black"
             style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', border: '1px solid var(--card-border)' }}
           >
@@ -98,6 +137,13 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
         {controls && <div className="mt-2">{controls}</div>}
         {footer && <div className="mt-2">{footer}</div>}
       </div>
+
+      {showExitConfirm && (
+        <ExitConfirmSheet
+          onConfirm={() => navigate('menu')}
+          onCancel={() => setShowExitConfirm(false)}
+        />
+      )}
 
       {showDemoSheet && gameId && (
         <div

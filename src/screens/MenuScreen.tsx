@@ -142,7 +142,7 @@ export function MenuScreen() {
 
         {!search && category === 'all' && favoriteGames.length > 0 && (
           <GameSection title="Favorites" subtitle="Your pinned quick-launch games.">
-            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar snap-carousel carousel-mask">
               {favoriteGames.map((game) => (
                 <div key={game.id} className="min-w-[210px] max-w-[210px] flex-shrink-0">
                   <GameCard
@@ -161,7 +161,7 @@ export function MenuScreen() {
 
         {!search && category === 'all' && recentGames.length > 0 && (
           <GameSection title="Recent" subtitle="Last completed sessions from this profile.">
-            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar snap-carousel carousel-mask">
               {recentGames.map((game) => (
                 <div key={game.id} className="min-w-[210px] max-w-[210px] flex-shrink-0">
                   <GameCard

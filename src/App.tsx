@@ -25,7 +25,7 @@ function AppContent() {
 
   return (
     <div className="app-shell mobile-shell w-full h-full flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-      <div className="flex-1 overflow-hidden relative screen-enter" key={state.screen}>
+      <div className="flex-1 overflow-hidden relative screen-enter" key={`${state.screen}_${state.activeGame ?? ''}`}>
         {state.screen === 'menu' && <MenuScreen />}
         {state.screen === 'game' && <GameScreen />}
         {state.screen === 'profile' && <ProfileScreen />}

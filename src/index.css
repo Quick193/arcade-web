@@ -154,6 +154,20 @@ body {
   .game-grid-gap { gap: 8px; }
 }
 
+/* Snap carousels (Favorites / Recent rows) */
+.snap-carousel {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.snap-carousel > * {
+  scroll-snap-align: start;
+}
+/* Fade mask hints at both scroll edges */
+.carousel-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 92%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0%, black 5%, black 92%, transparent 100%);
+}
+
 @media (display-mode: standalone) {
   body {
     overscroll-behavior-y: contain;

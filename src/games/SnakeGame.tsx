@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { GameWrapper } from '../components/GameWrapper';
+import { GameOverlay } from '../components/GameOverlay';
+import { MobileControlBar } from '../components/MobileControlBar';
 import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
+import { useMobileCanvasSize } from '../hooks/useMobileCanvasSize';
 
 const GRID = 20;
 const CELL = 16;
@@ -106,18 +109,24 @@ function floodFill(head: Pt, snake: Pt[], obstacles: Obstacle[], border: number)
 }
 
 export function SnakeGame() {
-  const { recordGame, checkAchievements } = useApp();
-  const { isEnabled: aiDemoMode, isAdaptive, mode: demoMode, cycleMode, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('snake');
+  const { recordGame, checkAchievements, bestScore, navigate } = useApp();
+  const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('snake');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gsRef = useRef<GS | null>(null);
   const rafRef = useRef<number>(0);
+  const hudSyncRef = useRef(0);
   const [displayScore, setDisplayScore] = useState(0);
   const [displayLives, setDisplayLives] = useState(3);
+  const [phase, setPhase] = useState<'playing' | 'gameover'>('playing');
   const aiDemoRef = useRef(aiDemoMode);
   aiDemoRef.current = aiDemoMode;
   const aiOnRef = useRef(aiDemoMode);
   aiOnRef.current = aiDemoMode;
-  const demoLabel = demoMode === 'adaptive' ? '🧠 Learn Me' : aiDemoMode ? '🤖 Classic AI' : '🎮 Demo Off';
+
+  // Responsive canvas — reserves space for header + footer + MobileControlBar
+  const canvasSize = useMobileCanvasSize({ width: W, height: H, reservedVerticalSpace: 250 });
+
+  const best = bestScore('snake');
 
   const initGame = useCallback(() => {
     const snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
@@ -131,6 +140,9 @@ export function SnakeGame() {
       moveTimer: 0, baseSpeed: 200, effectiveSpeed: 200,
       shrinkingBorder: 0, startTime: Date.now(), aiDisabled: false,
     };
+    setPhase('playing');
+    setDisplayScore(0);
+    setDisplayLives(3);
   }, []);
 
   useEffect(() => {
@@ -162,6 +174,7 @@ export function SnakeGame() {
           const dur = (Date.now() - gs.startTime) / 1000;
           recordGame('snake', false, gs.score, dur);
           checkAchievements('snake', { score: gs.score });
+          setPhase('gameover');
         } else {
           const newSnake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
           gs.snake = newSnake;
@@ -174,7 +187,7 @@ export function SnakeGame() {
 
       const newHead = { x: nx, y: ny };
       gs.snake.unshift(newHead);
-      let ateFood = nx === gs.food.x && ny === gs.food.y;
+      const ateFood = nx === gs.food.x && ny === gs.food.y;
       if (ateFood) {
         const pts = 10 * gs.level * (gs.doubleScore ? 2 : 1);
         gs.score += pts;
@@ -297,16 +310,6 @@ export function SnakeGame() {
         ctx.fillText('🤖 AI ON', W/2, 40);
         ctx.textAlign = 'left';
       }
-      if (gs.gameOver) {
-        ctx.fillStyle = 'rgba(0,0,0,0.7)';
-        ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = '#ff5'; ctx.font = 'bold 22px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('GAME OVER', W/2, H/2 - 20);
-        ctx.fillStyle = '#fff'; ctx.font = '14px monospace';
-        ctx.fillText(`Score: ${gs.score}`, W/2, H/2 + 10);
-        ctx.fillStyle = '#88f';
-        ctx.fillText('Tap or press R to restart', W/2, H/2 + 35);
-      }
       if (gs.paused) {
         ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0,0,W,H);
         ctx.fillStyle = '#fff'; ctx.font = 'bold 22px monospace'; ctx.textAlign = 'center';
@@ -366,7 +369,7 @@ export function SnakeGame() {
     function gameLoop(timestamp: number) {
       const gs = gsRef.current;
       if (!gs) return;
-      const dt = Math.min(timestamp - gs.lastTime, 100);
+      const dt = Math.min(timestamp - gs.lastTime, 50);
       gs.lastTime = timestamp;
       if (!gs.paused && !gs.gameOver) {
         if (aiOnRef.current && !gs.aiDisabled) aiStep(dt);
@@ -395,8 +398,11 @@ export function SnakeGame() {
           if (gs.powerups[i].timer <= 0) gs.powerups.splice(i, 1);
         }
       }
-      setDisplayScore(gs.score);
-      setDisplayLives(gs.lives);
+      // Throttle React state updates to every 4 frames to reduce re-renders
+      if (hudSyncRef.current++ % 4 === 0) {
+        setDisplayScore(gs.score);
+        setDisplayLives(gs.lives);
+      }
       render();
       rafRef.current = requestAnimationFrame(gameLoop);
     }
@@ -427,29 +433,31 @@ export function SnakeGame() {
     window.addEventListener('keydown', onKey);
     window.addEventListener('keydown', stopAI, true);
 
+    // Canvas swipe-to-steer — uses rendered CSS rect for correct scaling
     const el = canvas;
-    let tapTimeout: ReturnType<typeof setTimeout> | null = null;
+    let swipeStart: { x: number; y: number } | null = null;
+    el.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      swipeStart = { x: t.clientX, y: t.clientY };
+    }, { passive: true });
     el.addEventListener('touchend', (e) => {
       const gs = gsRef.current;
-      if (!gs) return;
-      if (gs.gameOver) { initGame(); powerupSpawnTimer = 5000; return; }
-      // Touch swipe to steer disables AI
-      if (aiOnRef.current) gs.aiDisabled = true;
+      if (!gs || gs.gameOver) return;
+      if (!swipeStart) return;
       const t = e.changedTouches[0];
-      const rect = el.getBoundingClientRect();
-      const tx = t.clientX - rect.left, ty = t.clientY - rect.top;
-      const cx = W / 2, cy = H / 2;
-      const dx = tx - cx, dy = ty - cy;
-      if (tapTimeout) clearTimeout(tapTimeout);
-      tapTimeout = setTimeout(() => {
-        const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U');
-        gs.nextDir = dir;
-        recordPlayerAction(`dir:${dir}`, {
-          aggression: 0.52,
-          risk: dir === 'U' ? 0.46 : 0.54,
-          exploration: dir === 'L' || dir === 'R' ? 0.68 : 0.4,
-        });
-      }, 50);
+      const dx = t.clientX - swipeStart.x;
+      const dy = t.clientY - swipeStart.y;
+      swipeStart = null;
+      // Require a minimum swipe distance to avoid accidental steering on taps
+      if (Math.hypot(dx, dy) < 10) return;
+      if (aiOnRef.current) gs.aiDisabled = true;
+      const dir: Dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U');
+      gs.nextDir = dir;
+      recordPlayerAction(`dir:${dir}`, {
+        aggression: 0.52,
+        risk: dir === 'U' ? 0.46 : 0.54,
+        exploration: dir === 'L' || dir === 'R' ? 0.68 : 0.4,
+      });
     });
 
     return () => {
@@ -457,7 +465,7 @@ export function SnakeGame() {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keydown', stopAI, true);
     };
-  }, [initGame, recordGame, checkAchievements]);
+  }, [initGame, recordGame, checkAchievements, getActionWeight, getTraitValue, isAdaptive, recordPlayerAction]);
 
   // Re-enable AI when setting turns on
   useEffect(() => {
@@ -465,45 +473,56 @@ export function SnakeGame() {
     if (gs && aiDemoMode) gs.aiDisabled = false;
   }, [aiDemoMode]);
 
-  const toggleAI = useCallback(() => {
+  // Steer via d-pad button (MobileControlBar)
+  const steer = useCallback((dir: Dir) => {
     const gs = gsRef.current;
-    if (gs) gs.aiDisabled = false;
-    cycleMode();
-  }, [cycleMode]);
-
-  const dpadBtn = (label: string, dir: Dir) => (
-    <button
-      key={dir}
-      onPointerDown={() => {
-        const gs = gsRef.current;
-        if (gs) {
-          gs.nextDir = dir;
-          recordPlayerAction(`dir:${dir}`, {
-            aggression: 0.52,
-            risk: dir === 'U' ? 0.46 : 0.54,
-            exploration: dir === 'L' || dir === 'R' ? 0.68 : 0.4,
-          });
-          if (aiOnRef.current) gs.aiDisabled = true; // Player taking over
-        }
-      }}
-      style={{ width: 48, height: 48, fontSize: 20, background: '#333', color: '#fff', border: '1px solid #555', borderRadius: 8, cursor: 'pointer', touchAction: 'none', userSelect: 'none' }}
-    >{label}</button>
-  );
+    if (!gs || gs.gameOver) return;
+    gs.nextDir = dir;
+    if (aiOnRef.current) gs.aiDisabled = true;
+    recordPlayerAction(`dir:${dir}`, {
+      aggression: 0.52,
+      risk: dir === 'U' ? 0.46 : 0.54,
+      exploration: dir === 'L' || dir === 'R' ? 0.68 : 0.4,
+    });
+  }, [recordPlayerAction]);
 
   return (
-    <GameWrapper title="Snake 2.0" score={displayScore} extra={<span style={{ color: '#f66', fontSize: 14 }}>{'♥'.repeat(displayLives)}</span>} onRestart={initGame}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-        <canvas ref={canvasRef} width={W} height={H} style={{ maxWidth: '100%', imageRendering: 'pixelated', border: '2px solid #333' }} />
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button onClick={toggleAI}
-            style={{ padding: '5px 14px', fontSize: 12, background: demoMode === 'adaptive' ? '#7b1fa2' : aiDemoMode ? '#0288d1' : '#333', color: '#fff', border: 'none', borderRadius: 16, cursor: 'pointer' }}>
-            {demoLabel}
-          </button>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '48px 48px 48px', gridTemplateRows: '48px 48px', gap: 4 }}>
-          <div />{dpadBtn('▲','U')}<div />
-          {dpadBtn('◀','L')}{dpadBtn('▼','D')}{dpadBtn('▶','R')}
-        </div>
+    <GameWrapper
+      title="Snake 2.0"
+      score={displayScore}
+      extra={<span style={{ color: 'var(--accent-red)', fontSize: 14 }}>{'♥'.repeat(displayLives)}</span>}
+      onRestart={initGame}
+      controls={(
+        <MobileControlBar
+          items={[
+            { id: 'up',    label: '▲', onPress: () => steer('U') },
+            { id: 'left',  label: '◀', onPress: () => steer('L') },
+            { id: 'down',  label: '▼', onPress: () => steer('D') },
+            { id: 'right', label: '▶', onPress: () => steer('R') },
+          ]}
+          hint="Swipe the canvas or tap the buttons to steer"
+        />
+      )}
+    >
+      <div className="relative flex w-full justify-center">
+        <canvas
+          ref={canvasRef}
+          width={W}
+          height={H}
+          className="game-canvas rounded-[28px] border border-white/10 bg-black/20 shadow-2xl"
+          style={{ width: canvasSize.width, height: canvasSize.height, imageRendering: 'pixelated' }}
+        />
+        <GameOverlay
+          visible={phase === 'gameover'}
+          eyebrow="Game Over"
+          title="Snake Got Munched"
+          score={displayScore}
+          best={best}
+          primaryLabel="Play Again"
+          onPrimary={initGame}
+          secondaryLabel="Back to Hub"
+          onSecondary={() => navigate('menu')}
+        />
       </div>
     </GameWrapper>
   );
