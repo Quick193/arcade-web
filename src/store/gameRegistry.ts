@@ -30,7 +30,7 @@ export const GAMES: GameMeta[] = [
   {
     id: 'game2048',
     name: '2048',
-    description: 'Merge tiles to reach 2048',
+    description: 'Merge matching tiles and reach the 2048 tile',
     icon: '🔢',
     color: '#ffa726',
     category: 'puzzle',
@@ -39,7 +39,7 @@ export const GAMES: GameMeta[] = [
   {
     id: 'memory',
     name: 'Memory Match',
-    description: 'Find all matching pairs',
+    description: 'Flip cards to find and match all the pairs',
     icon: '🃏',
     color: '#26c6da',
     category: 'puzzle',
@@ -57,7 +57,7 @@ export const GAMES: GameMeta[] = [
   {
     id: 'flappy',
     name: 'Flappy Bird',
-    description: 'Tap to fly through pipes',
+    description: 'Tap to fly through the gaps between pipes',
     icon: '🐦',
     color: '#ffa726',
     category: 'arcade',
@@ -66,7 +66,7 @@ export const GAMES: GameMeta[] = [
   {
     id: 'breakout',
     name: 'Breakout',
-    description: 'Break all bricks with the ball',
+    description: 'Bounce the ball to smash all the bricks',
     icon: '🧱',
     color: '#ef5350',
     category: 'classic',
@@ -93,7 +93,7 @@ export const GAMES: GameMeta[] = [
   {
     id: 'connect4',
     name: 'Connect 4',
-    description: 'Four in a row beats the AI',
+    description: 'Connect four in a row before the AI does',
     icon: '🔴',
     color: '#ef5350',
     category: 'strategy',
@@ -102,7 +102,7 @@ export const GAMES: GameMeta[] = [
   {
     id: 'sudoku',
     name: 'Sudoku',
-    description: 'Fill the grid, no repeats',
+    description: 'Fill every row, column and box without repeats',
     icon: '🔢',
     color: '#5c86ff',
     category: 'puzzle',
@@ -129,7 +129,7 @@ export const GAMES: GameMeta[] = [
   {
     id: 'chess',
     name: 'Chess',
-    description: 'Classic chess against AI',
+    description: 'Play classic chess and checkmate the AI',
     icon: '♟️',
     color: '#ffa726',
     category: 'strategy',
@@ -138,7 +138,7 @@ export const GAMES: GameMeta[] = [
   {
     id: 'neonblob',
     name: 'Neon Dash',
-    description: 'Sprint through a neon world, jump hazards and duck under laser gates',
+    description: 'Jump hazards, duck laser gates',
     icon: '⚡',
     color: '#26c6da',
     category: 'arcade',
