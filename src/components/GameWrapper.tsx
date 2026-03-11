@@ -85,11 +85,22 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
   // player has done anything (e.g. on a "Start Wave" / "Tap to start" screen).
   const gameStartedRef = useRef(false);
   const gameAreaRef = useRef<HTMLDivElement>(null);
+  const controlsAreaRef = useRef<HTMLDivElement>(null);
 
   // Capture-phase pointerdown fires before any stopPropagation in children
   // (e.g. Chess calls stopPropagation on its board overlays).
   useEffect(() => {
     const el = gameAreaRef.current;
+    if (!el) return;
+    const handler = () => { gameStartedRef.current = true; };
+    el.addEventListener('pointerdown', handler, { capture: true });
+    return () => el.removeEventListener('pointerdown', handler, { capture: true });
+  }, []);
+
+  // Also track D-pad / on-screen button presses that live in the controls footer.
+  // These sit outside gameAreaRef so they need their own capture-phase listener.
+  useEffect(() => {
+    const el = controlsAreaRef.current;
     if (!el) return;
     const handler = () => { gameStartedRef.current = true; };
     el.addEventListener('pointerdown', handler, { capture: true });
@@ -255,7 +266,7 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
             <div />
           )}
         </div>
-        {controls && <div className="mt-2">{controls}</div>}
+        {controls && <div ref={controlsAreaRef} className="mt-2">{controls}</div>}
         {footer && <div className="mt-2">{footer}</div>}
       </div>
 
