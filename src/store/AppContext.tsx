@@ -67,6 +67,9 @@ function makeDefaultProfile(name = 'Player', avatarColor = '#5c86ff'): Profile {
     gameDemoLearning: {},
     favoriteGameIds: [],
     createdAt: new Date().toISOString(),
+    settings: { ...DEFAULT_SETTINGS },
+    lastIncompleteGameId: null,
+    hiddenFromRecents: [],
   };
 }
 
@@ -84,6 +87,9 @@ const INITIAL_STATE: AppState = {
 type Action =
   | { type: 'NAVIGATE'; screen: AppState['screen']; game?: string }
   | { type: 'UPDATE_SETTINGS'; patch: Partial<Settings> }
+  | { type: 'MARK_GAME_INCOMPLETE'; gameId: string }
+  | { type: 'DISMISS_FROM_RECENTS'; gameId: string }
+  | { type: 'CLEAR_INCOMPLETE_GAME' }
   | { type: 'UPDATE_PROFILE'; patch: Partial<PlayerProfile> }
   | { type: 'SET_GAME_DEMO_MODE'; gameId: string; mode: DemoMode }
   | { type: 'RECORD_GAME_DEMO_ACTION'; gameId: string; action: string; traits?: Partial<DemoLearningTraits> }
@@ -116,16 +122,41 @@ function normalizeProfile(profile: Profile): Profile {
     gameDemoPreferences: profile.gameDemoPreferences ?? {},
     gameDemoLearning: profile.gameDemoLearning ?? {},
     favoriteGameIds: profile.favoriteGameIds ?? [],
+    settings: profile.settings ?? { ...DEFAULT_SETTINGS },
+    lastIncompleteGameId: profile.lastIncompleteGameId ?? null,
+    hiddenFromRecents: profile.hiddenFromRecents ?? [],
   };
 }
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'NAVIGATE':
-      return { ...state, screen: action.screen, activeGame: action.game ?? null };
+    case 'NAVIGATE': {
+      const navState = { ...state, screen: action.screen, activeGame: action.game ?? null };
+      if (action.screen === 'game' && action.game) {
+        return updateActiveProfile(navState, p => ({ ...p, lastIncompleteGameId: action.game! }));
+      }
+      return navState;
+    }
 
-    case 'UPDATE_SETTINGS':
-      return { ...state, settings: { ...state.settings, ...action.patch } };
+    case 'UPDATE_SETTINGS': {
+      const newSettings = { ...state.settings, ...action.patch };
+      return updateActiveProfile(
+        { ...state, settings: newSettings },
+        p => ({ ...p, settings: { ...(p.settings ?? DEFAULT_SETTINGS), ...action.patch } })
+      );
+    }
+
+    case 'MARK_GAME_INCOMPLETE':
+      return updateActiveProfile(state, p => ({ ...p, lastIncompleteGameId: action.gameId }));
+
+    case 'DISMISS_FROM_RECENTS':
+      return updateActiveProfile(state, p => ({
+        ...p,
+        hiddenFromRecents: [...(p.hiddenFromRecents ?? []).filter(id => id !== action.gameId), action.gameId],
+      }));
+
+    case 'CLEAR_INCOMPLETE_GAME':
+      return updateActiveProfile(state, p => ({ ...p, lastIncompleteGameId: null }));
 
     case 'UPDATE_PROFILE':
       return updateActiveProfile(state, p => ({ ...p, ...action.patch }));
@@ -181,8 +212,9 @@ function reducer(state: AppState, action: Action): AppState {
     }
 
     case 'SWITCH_PROFILE': {
-      if (!state.profiles.find(p => p.id === action.id)) return state;
-      return { ...state, activeProfileId: action.id };
+      const switchTarget = state.profiles.find(p => p.id === action.id);
+      if (!switchTarget) return state;
+      return { ...state, activeProfileId: action.id, settings: switchTarget.settings ?? DEFAULT_SETTINGS };
     }
 
     case 'DELETE_PROFILE': {
@@ -227,6 +259,8 @@ function reducer(state: AppState, action: Action): AppState {
             firstPlay: global.firstPlay ?? new Date().toISOString(),
             lastPlay: new Date().toISOString(),
           },
+          lastIncompleteGameId: null, // session completed — remove from Continue Playing
+          hiddenFromRecents: (profile.hiddenFromRecents ?? []).filter(id => id !== action.gameId), // re-show after new session
         };
       });
     }
@@ -306,6 +340,9 @@ interface AppContextValue {
   bestScore: (gameId: string) => number;
   resetStats: () => void;
   resetAchievements: () => void;
+  markGameIncomplete: (gameId: string) => void;
+  dismissFromRecents: (gameId: string) => void;
+  clearIncompleteGame: () => void;
   activeProfile: Profile;
 }
 
@@ -417,9 +454,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       { id: 'first_win', condition: () => context.won === true && !profile.unlockedAchievements.find(a => a.id === 'first_win') },
       { id: 'played_5', condition: () => (gs.totalGames + 1) >= 5 },
       { id: 'played_25', condition: () => (gs.totalGames + 1) >= 25 },
+      { id: 'played_50', condition: () => (gs.totalGames + 1) >= 50 },
       { id: 'played_100', condition: () => (gs.totalGames + 1) >= 100 },
       { id: 'playtime_1h', condition: () => (gs.globalPlaytime + (context.duration as number ?? 0)) >= 3600 },
       { id: 'playtime_5h', condition: () => (gs.globalPlaytime + (context.duration as number ?? 0)) >= 18000 },
+      { id: 'playtime_10h', condition: () => (gs.globalPlaytime + (context.duration as number ?? 0)) >= 36000 },
       // per-game
       { id: `${gameId}_first`, condition: () => (profile.stats[gameId]?.gamesPlayed ?? 0) === 0 },
       { id: `${gameId}_win`, condition: () => context.won === true },
@@ -446,6 +485,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // asteroids
       { id: 'asteroids_1000', condition: () => gameId === 'asteroids' && (context.score as number) >= 1000 },
       { id: 'asteroids_5000', condition: () => gameId === 'asteroids' && (context.score as number) >= 5000 },
+      // runner
+      { id: 'runner_500', condition: () => gameId === 'runner' && (context.score as number) >= 500 },
+      { id: 'runner_2000', condition: () => gameId === 'runner' && (context.score as number) >= 2000 },
+      // neon dash
+      { id: 'neon_1000', condition: () => gameId === 'neonblob' && (context.score as number) >= 1000 },
+      { id: 'neon_5000', condition: () => gameId === 'neonblob' && (context.score as number) >= 5000 },
       // sudoku
       { id: 'sudoku_hard', condition: () => gameId === 'sudoku' && context.won === true && context.difficulty === 'hard' },
       // explorer
@@ -496,9 +541,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const resetStats = useCallback(() => dispatch({ type: 'RESET_STATS' }), []);
   const resetAchievements = useCallback(() => dispatch({ type: 'RESET_ACHIEVEMENTS' }), []);
+  const markGameIncomplete = useCallback((gameId: string) => {
+    dispatch({ type: 'MARK_GAME_INCOMPLETE', gameId });
+  }, []);
+  const dismissFromRecents = useCallback((gameId: string) => {
+    dispatch({ type: 'DISMISS_FROM_RECENTS', gameId });
+  }, []);
+  const clearIncompleteGame = useCallback(() => {
+    dispatch({ type: 'CLEAR_INCOMPLETE_GAME' });
+  }, []);
 
   return (
-    <AppContext.Provider value={{ state, navigate, updateSettings, updateProfile, setGameDemoMode, recordGameDemoAction, addProfile, switchProfile, deleteProfile, toggleFavoriteGame, recordGame, checkAchievements, bestScore, resetStats, resetAchievements, activeProfile }}>
+    <AppContext.Provider value={{ state, navigate, updateSettings, updateProfile, setGameDemoMode, recordGameDemoAction, addProfile, switchProfile, deleteProfile, toggleFavoriteGame, recordGame, checkAchievements, bestScore, resetStats, resetAchievements, markGameIncomplete, dismissFromRecents, clearIncompleteGame, activeProfile }}>
       {children}
     </AppContext.Provider>
   );

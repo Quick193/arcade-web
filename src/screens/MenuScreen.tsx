@@ -8,7 +8,7 @@ const CATEGORIES = ['all', 'arcade', 'puzzle', 'strategy', 'classic'] as const;
 type Category = typeof CATEGORIES[number];
 
 export function MenuScreen() {
-  const { navigate, activeProfile, toggleFavoriteGame } = useApp();
+  const { navigate, activeProfile, toggleFavoriteGame, dismissFromRecents, clearIncompleteGame } = useApp();
   const [category, setCategory] = useState<Category>('all');
   const [search, setSearch] = useState('');
 
@@ -21,6 +21,7 @@ export function MenuScreen() {
   });
 
   const favoriteIds = new Set(activeProfile.favoriteGameIds);
+  const hiddenSet = new Set(activeProfile.hiddenFromRecents ?? []);
   const gamesById = new Map(GAMES.map((game) => [game.id, game]));
   const recentlyPlayed = [...GAMES]
     .map((game) => ({
@@ -28,11 +29,14 @@ export function MenuScreen() {
       playedAt: getLastPlayedAt(activeProfile.stats[game.id]),
       gamesPlayed: activeProfile.stats[game.id]?.gamesPlayed ?? 0,
     }))
-    .filter((entry) => entry.gamesPlayed > 0)
+    .filter((entry) => entry.gamesPlayed > 0 && !hiddenSet.has(entry.game.id))
     .sort((a, b) => b.playedAt - a.playedAt);
 
-  const continuePlaying = recentlyPlayed.slice(0, 3).map((entry) => entry.game);
-  const latestGame = continuePlaying[0] ?? null;
+  // Continue Playing: only show game if session was abandoned mid-play (not completed)
+  const incompleteId = activeProfile.lastIncompleteGameId ?? null;
+  const incompleteGame = incompleteId ? (gamesById.get(incompleteId) ?? null) : null;
+  const continuePlaying = incompleteGame ? [incompleteGame] : [];
+  const latestGame = incompleteGame;
   const recentGames = recentlyPlayed.slice(0, 6).map((entry) => entry.game);
   const favoriteGames = activeProfile.favoriteGameIds
     .map((id) => gamesById.get(id))
@@ -62,7 +66,7 @@ export function MenuScreen() {
           </div>
           <div className="flex gap-2">
             <NavButton icon="👤" label="Profile" onClick={() => navigate('profile')} />
-            <NavButton icon="🏆" label="Awards" onClick={() => navigate('achievements')} />
+            <NavButton icon="🏆" label="Achievements" onClick={() => navigate('achievements')} />
             <NavButton icon="⚙️" label="Settings" onClick={() => navigate('settings')} />
           </div>
         </div>
@@ -123,7 +127,7 @@ export function MenuScreen() {
       {/* Game grid */}
       <div className="flex-1 scrollable px-4 py-3">
         {!search && category === 'all' && continuePlaying.length > 0 && (
-          <GameSection title="Continue Playing" subtitle="Jump back into the games you touched most recently.">
+          <GameSection title="Continue Playing" subtitle="You left this session mid-game — pick up where you left off.">
             <div className="grid gap-3">
               {continuePlaying.map((game) => (
                 <FeatureCard
@@ -133,6 +137,7 @@ export function MenuScreen() {
                   bestScore={activeProfile.stats[game.id]?.bestScore ?? 0}
                   favorite={favoriteIds.has(game.id)}
                   onFavorite={() => toggleFavoriteGame(game.id)}
+                  onDismiss={() => clearIncompleteGame()}
                   onClick={() => navigate('game', game.id)}
                 />
               ))}
@@ -160,7 +165,7 @@ export function MenuScreen() {
         )}
 
         {!search && category === 'all' && recentGames.length > 0 && (
-          <GameSection title="Recent" subtitle="Last completed sessions from this profile.">
+          <GameSection title="Recent" subtitle="Your recently completed sessions.">
             <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar snap-carousel carousel-mask">
               {recentGames.map((game) => (
                 <div key={game.id} className="min-w-[210px] max-w-[210px] flex-shrink-0">
@@ -170,6 +175,7 @@ export function MenuScreen() {
                     bestScore={activeProfile.stats[game.id]?.bestScore ?? 0}
                     favorite={favoriteIds.has(game.id)}
                     onFavorite={() => toggleFavoriteGame(game.id)}
+                    onDismiss={() => dismissFromRecents(game.id)}
                     onClick={() => navigate('game', game.id)}
                   />
                 </div>
@@ -224,12 +230,13 @@ function NavButton({ icon, label, onClick }: { icon: string; label: string; onCl
   );
 }
 
-function GameCard({ game, played, bestScore, favorite = false, onFavorite, onClick }: {
+function GameCard({ game, played, bestScore, favorite = false, onFavorite, onDismiss, onClick }: {
   game: GameMeta;
   played: boolean;
   bestScore: number;
   favorite?: boolean;
   onFavorite?: () => void;
+  onDismiss?: () => void;
   onClick: () => void;
 }) {
   return (
@@ -237,7 +244,18 @@ function GameCard({ game, played, bestScore, favorite = false, onFavorite, onCli
       className="rounded-xl border p-1"
       style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
     >
-      <div className="flex justify-end px-2 pt-2">
+      <div className="flex justify-end gap-1 px-2 pt-2">
+        {onDismiss && (
+          <button
+            onClick={e => { e.stopPropagation(); onDismiss(); }}
+            className="pressable h-8 w-8 rounded-full text-sm"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)' }}
+            aria-label={`Remove ${game.name} from recents`}
+            title="Remove from recents"
+          >
+            ✕
+          </button>
+        )}
         <button
           onClick={onFavorite}
           className="pressable h-8 w-8 rounded-full text-sm"
@@ -285,12 +303,13 @@ function GameCard({ game, played, bestScore, favorite = false, onFavorite, onCli
   );
 }
 
-function FeatureCard({ game, played, bestScore, favorite, onFavorite, onClick }: {
+function FeatureCard({ game, played, bestScore, favorite, onFavorite, onDismiss, onClick }: {
   game: GameMeta;
   played: boolean;
   bestScore: number;
   favorite: boolean;
   onFavorite: () => void;
+  onDismiss?: () => void;
   onClick: () => void;
 }) {
   return (
@@ -307,14 +326,27 @@ function FeatureCard({ game, played, bestScore, favorite, onFavorite, onClick }:
           <div className="mt-3 text-lg font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>{game.name}</div>
           <div className="mt-1 text-sm leading-5" style={{ color: 'var(--text-secondary)' }}>{game.description}</div>
         </div>
-        <button
-          onClick={onFavorite}
-          className="pressable h-9 w-9 rounded-full text-sm"
-          style={{ background: favorite ? game.color + '22' : 'rgba(255,255,255,0.06)', color: favorite ? game.color : 'var(--text-muted)' }}
-          aria-label={favorite ? `Remove ${game.name} from favorites` : `Add ${game.name} to favorites`}
-        >
-          {favorite ? '★' : '☆'}
-        </button>
+        <div className="flex gap-1 flex-shrink-0">
+          {onDismiss && (
+            <button
+              onClick={e => { e.stopPropagation(); onDismiss(); }}
+              className="pressable h-9 w-9 rounded-full text-sm"
+              style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)' }}
+              aria-label="Dismiss from continue playing"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          )}
+          <button
+            onClick={onFavorite}
+            className="pressable h-9 w-9 rounded-full text-sm"
+            style={{ background: favorite ? game.color + '22' : 'rgba(255,255,255,0.06)', color: favorite ? game.color : 'var(--text-muted)' }}
+            aria-label={favorite ? `Remove ${game.name} from favorites` : `Add ${game.name} to favorites`}
+          >
+            {favorite ? '★' : '☆'}
+          </button>
+        </div>
       </div>
       <div className="mt-4 flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
         <span>{played ? 'Recently played' : 'Ready to launch'}</span>

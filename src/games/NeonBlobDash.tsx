@@ -11,14 +11,13 @@ import { useMobileCanvasSize } from '../hooks/useMobileCanvasSize';
 const W = 480;
 const H = 300;
 const GROUND_Y = 240;
-const GRAVITY = 0.48;
-const JUMP_POWER = -12;
+const GRAVITY = 0.55;
+const JUMP_POWER = -10.5;
 const BASE_SPEED = 4.1;
 const BLOB_X = 70;
 const BLOB_R = 18;
 
 interface Obstacle { x: number; y: number; w: number; h: number; type: 'spike' | 'wall' | 'gate_low' | 'gate_high'; }
-interface Portal { x: number; color: string; }
 interface Particle { x: number; y: number; vx: number; vy: number; color: string; life: number; size: number; }
 interface Star { x: number; y: number; brightness: number; }
 interface GS {
@@ -28,7 +27,6 @@ interface GS {
   ducking: boolean;
   speed: number;
   obstacles: Obstacle[];
-  portals: Portal[];
   particles: Particle[];
   stars: Star[];
   score: number;
@@ -37,7 +35,6 @@ interface GS {
   started: boolean;
   frame: number;
   spawnTimer: number;
-  portalTimer: number;
   aiDisabled: boolean;
   bestSession: number;
   duckPressed: boolean;
@@ -56,7 +53,6 @@ function initGs(): GS {
     ducking: false,
     speed: BASE_SPEED,
     obstacles: [],
-    portals: [],
     particles: [],
     stars: makeStars(),
     score: 0,
@@ -65,7 +61,6 @@ function initGs(): GS {
     started: false,
     frame: 0,
     spawnTimer: 60,
-    portalTimer: 180,
     aiDisabled: false,
     bestSession: 0,
     duckPressed: false,
@@ -155,9 +150,9 @@ export function NeonBlobDash() {
       const h = 30 + Math.random() * 40;
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - h, w: 18, h, type: 'wall' });
     } else if (rand < 0.8 && gs.score > 5) {
-      gs.obstacles.push({ x: W + 20, y: GROUND_Y - 32, w: 40, h: 20, type: 'gate_low' });
+      gs.obstacles.push({ x: W + 20, y: GROUND_Y - 32, w: 60, h: 8, type: 'gate_low' });
     } else if (gs.score > 10) {
-      gs.obstacles.push({ x: W + 20, y: GROUND_Y - 80, w: 40, h: 60, type: 'gate_high' });
+      gs.obstacles.push({ x: W + 20, y: GROUND_Y - 80, w: 50, h: 16, type: 'gate_high' });
     } else {
       const h = 20 + Math.random() * 30;
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - h, w: 24, h, type: 'spike' });
@@ -197,6 +192,12 @@ export function NeonBlobDash() {
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, W, H);
 
+    ctx.strokeStyle = 'rgba(100, 0, 200, 0.08)';
+    ctx.lineWidth = 1;
+    const gridSize = 30;
+    for (let gx = 0; gx < W; gx += gridSize) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
+    for (let gy = 0; gy < H; gy += gridSize) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
+
     gs.stars.forEach((star) => {
       const twinkle = 0.5 + 0.5 * Math.sin(ts / 800 + star.x);
       ctx.fillStyle = `rgba(255,255,255,${star.brightness * twinkle})`;
@@ -215,47 +216,110 @@ export function NeonBlobDash() {
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    gs.portals.forEach((portal) => {
-      ctx.save();
-      ctx.translate(portal.x, GROUND_Y - 50);
-      const radius = 25 + 5 * Math.sin(ts / 300);
-      ctx.strokeStyle = portal.color;
-      ctx.lineWidth = 3;
-      ctx.shadowColor = portal.color;
-      ctx.shadowBlur = 15;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, radius * 0.6, radius, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    });
-
     gs.obstacles.forEach((obstacle) => {
       ctx.save();
       if (obstacle.type === 'spike') {
-        ctx.fillStyle = '#ff4444';
+        // Sharp triangle with bright red neon glow and outline
         ctx.shadowColor = '#ff0000';
-        ctx.shadowBlur = 10;
+        ctx.shadowBlur = 18;
+        ctx.fillStyle = '#ff2222';
         ctx.beginPath();
         ctx.moveTo(obstacle.x, obstacle.y + obstacle.h);
         ctx.lineTo(obstacle.x + obstacle.w / 2, obstacle.y);
         ctx.lineTo(obstacle.x + obstacle.w, obstacle.y + obstacle.h);
         ctx.closePath();
         ctx.fill();
-      } else if (obstacle.type === 'wall') {
-        ctx.fillStyle = '#ff8800';
-        ctx.shadowColor = '#ff6600';
+        // Neon outline
+        ctx.strokeStyle = '#ff6666';
+        ctx.lineWidth = 1.5;
         ctx.shadowBlur = 8;
+        ctx.stroke();
+        // Inner brighter highlight along left face
+        ctx.strokeStyle = 'rgba(255,180,180,0.6)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(obstacle.x + obstacle.w / 2, obstacle.y + 2);
+        ctx.lineTo(obstacle.x + 2, obstacle.y + obstacle.h - 1);
+        ctx.stroke();
+      } else if (obstacle.type === 'wall') {
+        // Solid neon barrier with horizontal scan lines for techy look
+        ctx.fillStyle = '#ff6600';
+        ctx.shadowColor = '#ff6600';
+        ctx.shadowBlur = 12;
         ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
+        // Scan lines inside
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(255,200,100,0.5)';
+        ctx.lineWidth = 1;
+        for (let sy = obstacle.y + 4; sy < obstacle.y + obstacle.h; sy += 5) {
+          ctx.beginPath();
+          ctx.moveTo(obstacle.x + 1, sy);
+          ctx.lineTo(obstacle.x + obstacle.w - 1, sy);
+          ctx.stroke();
+        }
+        // Bright neon border
+        ctx.strokeStyle = '#ffaa44';
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = '#ff6600';
+        ctx.shadowBlur = 6;
+        ctx.strokeRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
       } else if (obstacle.type === 'gate_low') {
-        ctx.fillStyle = '#ff00ff';
+        // Laser beam — thin horizontal beam in magenta with intense glow
+        const beamY = obstacle.y + obstacle.h / 2;
         ctx.shadowColor = '#ff00ff';
-        ctx.shadowBlur = 12;
-        ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
+        ctx.shadowBlur = 20;
+        // Core beam
+        ctx.strokeStyle = '#ff00ff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(obstacle.x, beamY);
+        ctx.lineTo(obstacle.x + obstacle.w, beamY);
+        ctx.stroke();
+        // Outer glow layer
+        ctx.strokeStyle = 'rgba(255,0,255,0.3)';
+        ctx.lineWidth = 7;
+        ctx.shadowBlur = 30;
+        ctx.beginPath();
+        ctx.moveTo(obstacle.x, beamY);
+        ctx.lineTo(obstacle.x + obstacle.w, beamY);
+        ctx.stroke();
+        // End dots
+        ctx.fillStyle = '#ff88ff';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(obstacle.x, beamY, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(obstacle.x + obstacle.w, beamY, 3, 0, Math.PI * 2);
+        ctx.fill();
+        // DUCK label above
+        ctx.shadowBlur = 6;
+        ctx.fillStyle = '#ff88ff';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('DUCK', obstacle.x + obstacle.w / 2, obstacle.y - 4);
+        ctx.textAlign = 'left';
       } else {
-        ctx.fillStyle = '#00ff88';
-        ctx.shadowColor = '#00ff88';
-        ctx.shadowBlur = 12;
+        // gate_high: floating energy platform in teal with glow
+        ctx.fillStyle = '#00ffcc';
+        ctx.shadowColor = '#00ffcc';
+        ctx.shadowBlur = 14;
         ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
+        // Bright top edge
+        ctx.strokeStyle = '#aaffee';
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(obstacle.x, obstacle.y + 1);
+        ctx.lineTo(obstacle.x + obstacle.w, obstacle.y + 1);
+        ctx.stroke();
+        // JUMP label above
+        ctx.fillStyle = '#aaffee';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'center';
+        ctx.shadowBlur = 6;
+        ctx.fillText('JUMP', obstacle.x + obstacle.w / 2, obstacle.y - 4);
+        ctx.textAlign = 'left';
       }
       ctx.restore();
     });
@@ -274,6 +338,18 @@ export function NeonBlobDash() {
 
     const blobHeight = gs.ducking ? BLOB_R * 0.6 : BLOB_R;
     const hue = (180 + Math.sin(gs.glowPhase) * 60) % 360;
+    // Trail shadow — three fading echoes behind the blob
+    for (let ti = 3; ti >= 1; ti -= 1) {
+      const trailAlpha = ti === 3 ? 0.08 : ti === 2 ? 0.13 : 0.18;
+      const trailX = BLOB_X - ti * 9;
+      ctx.save();
+      ctx.globalAlpha = trailAlpha;
+      ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
+      ctx.beginPath();
+      ctx.ellipse(trailX, gs.blobY, BLOB_R * (1 - ti * 0.07), blobHeight * (1 - ti * 0.07), 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
     ctx.save();
     ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
     ctx.shadowBlur = 20;
@@ -281,9 +357,22 @@ export function NeonBlobDash() {
     ctx.beginPath();
     ctx.ellipse(BLOB_X, gs.blobY, BLOB_R, blobHeight, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    // White highlight streak — diagonal streak across upper-left of blob
+    ctx.shadowBlur = 0;
+    const streakGrad = ctx.createLinearGradient(
+      BLOB_X - BLOB_R * 0.6, gs.blobY - blobHeight * 0.7,
+      BLOB_X - BLOB_R * 0.1, gs.blobY - blobHeight * 0.1
+    );
+    streakGrad.addColorStop(0, 'rgba(255,255,255,0.65)');
+    streakGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = streakGrad;
     ctx.beginPath();
-    ctx.ellipse(BLOB_X - BLOB_R * 0.3, gs.blobY - blobHeight * 0.3, BLOB_R * 0.35, blobHeight * 0.3, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(BLOB_X - BLOB_R * 0.28, gs.blobY - blobHeight * 0.32, BLOB_R * 0.38, blobHeight * 0.28, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    // Small top-left glint dot
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.beginPath();
+    ctx.arc(BLOB_X - BLOB_R * 0.38, gs.blobY - blobHeight * 0.52, 2.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
@@ -341,19 +430,9 @@ export function NeonBlobDash() {
         gs.spawnTimer = Math.max(42, Math.floor(78 + Math.random() * 64 - gs.score * 0.2));
       }
 
-      gs.portalTimer -= 1;
-      if (gs.portalTimer <= 0) {
-        gs.portals.push({ x: W + 20, color: `hsl(${Math.random() * 360}, 100%, 60%)` });
-        gs.portalTimer = 300 + Math.floor(Math.random() * 200);
-      }
-
       gs.obstacles = gs.obstacles.filter((obstacle) => {
         obstacle.x -= gs.speed;
         return obstacle.x + obstacle.w > -20;
-      });
-      gs.portals = gs.portals.filter((portal) => {
-        portal.x -= gs.speed * 0.8;
-        return portal.x > -30;
       });
 
       const blobLeft = BLOB_X - BLOB_R + 4;
@@ -407,7 +486,7 @@ export function NeonBlobDash() {
 
   return (
     <GameWrapper
-      title="Neon Pulse Run"
+      title="Neon Dash"
       score={displayScore}
       onRestart={resetGame}
       footer={best > 0 ? <div className="text-center text-[11px]" style={{ color: 'var(--text-muted)' }}>Best score: {best.toLocaleString()}</div> : undefined}
@@ -432,10 +511,10 @@ export function NeonBlobDash() {
         />
         <GameOverlay
           visible={phase !== 'playing'}
-          eyebrow={phase === 'ready' ? 'Touch Run' : 'Pulse Lost'}
-          title={phase === 'ready' ? 'Ride The Pulse Lane' : 'Reboot The Pulse'}
+          eyebrow={phase === 'ready' ? 'Touch Run' : 'Dash Lost'}
+          title={phase === 'ready' ? 'Dash Started' : 'Reboot The Dash'}
           subtitle={phase === 'ready'
-            ? 'The same shared start, restart, and hub flow now wraps Neon Pulse Run too.'
+            ? 'Jump over spikes and walls, duck under laser beams, leap onto platforms.'
             : 'Restart launches a clean run. Use the shared Jump and Duck bar for more reliable thumb control.'}
           score={displayScore}
           best={best}

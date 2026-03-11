@@ -478,19 +478,40 @@ export function SudokuGame() {
           }))}
         </div>
 
-        {/* Number pad */}
-        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-          {[1,2,3,4,5,6,7,8,9].map(n => (
-            <button key={n} onClick={() => enterValue(n)}
-              style={{ width: 36, height: 36, fontSize: 18, background: '#333', color: '#fff', border: '1px solid #555', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold' }}>
-              {n}
-            </button>
-          ))}
-          <button onClick={() => enterValue(0)}
-            style={{ width: 36, height: 36, fontSize: 14, background: '#333', color: '#fff', border: '1px solid #555', borderRadius: 4, cursor: 'pointer' }}>
-            ✕
-          </button>
-        </div>
+        {/* Number pad — gray out numbers that are fully placed (9 times) */}
+        {(() => {
+          const numCount: Record<number, number> = {};
+          for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+            const v = gs.grid[r][c];
+            if (v) numCount[v] = (numCount[v] || 0) + 1;
+          }
+          return (
+            <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+              {[1,2,3,4,5,6,7,8,9].map(n => {
+                const full = (numCount[n] || 0) >= 9;
+                return (
+                  <button key={n} onClick={() => !full && enterValue(n)}
+                    style={{
+                      width: 36, height: 36, fontSize: 18,
+                      background: full ? '#222' : '#333',
+                      color: full ? '#555' : '#fff',
+                      border: `1px solid ${full ? '#444' : '#555'}`,
+                      borderRadius: 4,
+                      cursor: full ? 'default' : 'pointer',
+                      fontWeight: 'bold',
+                      opacity: full ? 0.4 : 1,
+                    }}>
+                    {n}
+                  </button>
+                );
+              })}
+              <button onClick={() => enterValue(0)}
+                style={{ width: 36, height: 36, fontSize: 14, background: '#333', color: '#fff', border: '1px solid #555', borderRadius: 4, cursor: 'pointer' }}>
+                ✕
+              </button>
+            </div>
+          );
+        })()}
 
         <button onClick={() => setConfigured(false)}
           style={{ marginTop: 4, padding: '4px 12px', background: '#333', color: '#aaa', border: '1px solid #555', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>

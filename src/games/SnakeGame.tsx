@@ -111,6 +111,11 @@ function floodFill(head: Pt, snake: Pt[], obstacles: Obstacle[], border: number)
 export function SnakeGame() {
   const { recordGame, checkAchievements, bestScore, navigate } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('snake');
+  // Stable refs so the game loop useEffect doesn't re-run when these update
+  const recordGameRef = useRef(recordGame);
+  recordGameRef.current = recordGame;
+  const checkAchievementsRef = useRef(checkAchievements);
+  checkAchievementsRef.current = checkAchievements;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gsRef = useRef<GS | null>(null);
   const rafRef = useRef<number>(0);
@@ -172,8 +177,8 @@ export function SnakeGame() {
         if (gs.lives <= 0) {
           gs.gameOver = true;
           const dur = (Date.now() - gs.startTime) / 1000;
-          recordGame('snake', false, gs.score, dur);
-          checkAchievements('snake', { score: gs.score });
+          recordGameRef.current('snake', false, gs.score, dur);
+          checkAchievementsRef.current('snake', { score: gs.score });
           setPhase('gameover');
         } else {
           const newSnake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
@@ -465,7 +470,8 @@ export function SnakeGame() {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keydown', stopAI, true);
     };
-  }, [initGame, recordGame, checkAchievements, getActionWeight, getTraitValue, isAdaptive, recordPlayerAction]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initGame]);
 
   // Re-enable AI when setting turns on
   useEffect(() => {

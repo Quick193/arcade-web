@@ -77,6 +77,9 @@ export interface Profile {
   gameDemoLearning: Record<string, GameDemoLearningProfile>;
   favoriteGameIds: string[];
   createdAt: string;
+  settings?: Settings;
+  lastIncompleteGameId?: string | null;
+  hiddenFromRecents?: string[];
 }
 
 // Keep for backward compat during migration

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { THEMES } from '../store/themes';
 import type { ThemeName } from '../store/types';
@@ -12,8 +11,7 @@ const THEME_LABELS: Record<ThemeName, string> = {
 };
 
 export function SettingsScreen() {
-  const { state, navigate, updateSettings, resetStats, resetAchievements } = useApp();
-  const [confirmReset, setConfirmReset] = useState<'stats' | 'achievements' | null>(null);
+  const { state, navigate, updateSettings } = useApp();
 
   const s = state.settings;
 
@@ -28,7 +26,7 @@ export function SettingsScreen() {
 
       <div className="flex-1 scrollable px-4 py-4 flex flex-col gap-4">
 
-        {/* Theme */}
+        {/* Appearance */}
         <Section title="Appearance">
           <div className="px-4 py-3">
             <p className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Theme</p>
@@ -82,48 +80,6 @@ export function SettingsScreen() {
           />
         </Section>
 
-        {/* Gameplay */}
-        <Section title="Gameplay">
-          <ToggleRow
-            label="Ghost Piece"
-            description="Show where Tetris pieces will land"
-            value={s.showGhostPiece}
-            onChange={v => updateSettings({ showGhostPiece: v })}
-          />
-          <ToggleRow
-            label="Chess Hints"
-            description="Highlight valid moves in Chess"
-            value={s.chessShowHints}
-            onChange={v => updateSettings({ chessShowHints: v })}
-          />
-        </Section>
-
-        <Section title="AI Demo">
-          <div className="px-4 py-3 text-sm" style={{ color: 'var(--text-muted)' }}>
-            AI demo is now controlled per game from the game header. Each game can use `Off`, `Classic AI`, or `Learn Me` without affecting the others.
-          </div>
-        </Section>
-
-        {/* Data */}
-        <Section title="Data">
-          <div className="px-4 py-3 flex flex-col gap-2">
-            <button
-              onClick={() => setConfirmReset('stats')}
-              className="w-full py-2.5 rounded-lg text-sm font-semibold pressable border"
-              style={{ color: 'var(--accent-orange)', borderColor: 'var(--accent-orange)44', background: 'var(--accent-orange)11' }}
-            >
-              Reset All Stats
-            </button>
-            <button
-              onClick={() => setConfirmReset('achievements')}
-              className="w-full py-2.5 rounded-lg text-sm font-semibold pressable border"
-              style={{ color: 'var(--accent-red)', borderColor: 'var(--accent-red)44', background: 'var(--accent-red)11' }}
-            >
-              Reset Achievements
-            </button>
-          </div>
-        </Section>
-
         {/* About */}
         <Section title="About">
           <div className="px-4 py-3 text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -133,45 +89,6 @@ export function SettingsScreen() {
         </Section>
 
       </div>
-
-      {/* Confirm Dialog */}
-      {confirmReset && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.7)' }}
-          onClick={() => setConfirmReset(null)}>
-          <div
-            className="card p-6 w-full max-w-xs animate-bounce-in"
-            onClick={e => e.stopPropagation()}
-          >
-            <h2 className="font-bold text-base mb-2" style={{ color: 'var(--text-primary)' }}>
-              {confirmReset === 'stats' ? 'Reset All Stats?' : 'Reset Achievements?'}
-            </h2>
-            <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-              This cannot be undone. All {confirmReset === 'stats' ? 'game statistics' : 'unlocked achievements'} will be erased.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmReset(null)}
-                className="flex-1 py-2 rounded-lg text-sm font-semibold pressable"
-                style={{ background: 'var(--card-border)', color: 'var(--text-primary)' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (confirmReset === 'stats') resetStats();
-                  else resetAchievements();
-                  setConfirmReset(null);
-                }}
-                className="flex-1 py-2 rounded-lg text-sm font-bold pressable"
-                style={{ background: 'var(--accent-red)', color: '#fff' }}
-              >
-                Reset
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

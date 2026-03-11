@@ -12,7 +12,7 @@ const W = 320;
 const H = 480;
 const ASTEROID_RADIUS = [0, 14, 22, 36];
 const BULLET_SPEED = 6;
-const SHIP_ACCEL = 0.19;
+const SHIP_ACCEL = 0.12;
 const SHIP_DRAG = 0.985;
 const SHIP_ROT_SPEED = 0.048;
 

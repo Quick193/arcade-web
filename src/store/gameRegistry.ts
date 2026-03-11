@@ -137,9 +137,9 @@ export const GAMES: GameMeta[] = [
   },
   {
     id: 'neonblob',
-    name: 'Neon Pulse Run',
-    description: 'Ride the pulse lane, jump high hazards and duck low gates',
-    icon: '🌟',
+    name: 'Neon Dash',
+    description: 'Sprint through a neon world, jump hazards and duck under laser gates',
+    icon: '⚡',
     color: '#26c6da',
     category: 'arcade',
     controls: 'Tap/Space Jump · ↓ Duck',

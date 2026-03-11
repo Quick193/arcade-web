@@ -394,6 +394,26 @@ export function SpaceInvadersGame() {
               break;
             }
           }
+          // Check player bullet vs shields
+          if (gs.playerBullet) {
+            shieldHitCheck: for (const shield of gs.shields) {
+              const bx = gs.playerBullet.x;
+              const by = gs.playerBullet.y;
+              if (bx < shield.x || bx > shield.x + 40 || by + 12 < shield.y || by > shield.y + 25) continue;
+              for (let r = 0; r < shield.cells.length; r++) {
+                for (let c = 0; c < shield.cells[r].length; c++) {
+                  if (!shield.cells[r][c]) continue;
+                  const cx = shield.x + c * 5;
+                  const cy = shield.y + r * 5;
+                  if (bx >= cx && bx <= cx + 5 && by <= cy + 5 && by + 12 >= cy) {
+                    shield.cells[r][c] = false;
+                    gs.playerBullet = null;
+                    break shieldHitCheck;
+                  }
+                }
+              }
+            }
+          }
         }
       }
 
@@ -419,6 +439,28 @@ export function SpaceInvadersGame() {
           gs.enemyBullets.splice(index, 1);
           continue;
         }
+        // Check enemy bullet vs shields
+        let hitShield = false;
+        for (const shield of gs.shields) {
+          if (hitShield) break;
+          const bx = bullet.x;
+          const by = bullet.y;
+          if (bx + 2 < shield.x || bx - 2 > shield.x + 40 || by + 8 < shield.y || by > shield.y + 25) continue;
+          for (let r = 0; r < shield.cells.length && !hitShield; r++) {
+            for (let c = 0; c < shield.cells[r].length && !hitShield; c++) {
+              if (!shield.cells[r][c]) continue;
+              const cx = shield.x + c * 5;
+              const cy = shield.y + r * 5;
+              if (bx + 1 > cx && bx - 1 < cx + 5 && by + 8 > cy && by < cy + 5) {
+                shield.cells[r][c] = false;
+                if (r + 1 < shield.cells.length) shield.cells[r + 1][c] = false;
+                gs.enemyBullets.splice(index, 1);
+                hitShield = true;
+              }
+            }
+          }
+        }
+        if (hitShield) continue;
         if (bullet.x > gs.playerX && bullet.x < gs.playerX + 28 && bullet.y > H - 55 && bullet.y < H - 42) {
           gs.lives -= 1;
           gs.enemyBullets.splice(index, 1);

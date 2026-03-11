@@ -68,6 +68,20 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'asteroids_first', name: 'Houston', description: 'Play Asteroids for the first time', icon: '☄️', color: '#ab47bc', points: 5 },
   { id: 'asteroids_1000', name: 'Asteroid Hunter', description: 'Score 1,000 in Asteroids', icon: '☄️', color: '#ab47bc', points: 25 },
   { id: 'asteroids_5000', name: 'Galaxy Brain', description: 'Score 5,000 in Asteroids', icon: '🌌', color: '#ffee58', points: 40, secret: true },
+
+  // Mario Run
+  { id: 'runner_first', name: 'First Steps', description: 'Play Mario Run for the first time', icon: '🏃', color: '#e52222', points: 5 },
+  { id: 'runner_500', name: 'On The Run', description: 'Score 500 in Mario Run', icon: '🍄', color: '#ffa726', points: 20 },
+  { id: 'runner_2000', name: 'Mario Maestro', description: 'Score 2,000 in Mario Run', icon: '🏅', color: '#ffee58', points: 40, secret: true },
+
+  // Neon Dash
+  { id: 'neon_first', name: 'Neon Rookie', description: 'Play Neon Dash for the first time', icon: '⚡', color: '#26c6da', points: 5 },
+  { id: 'neon_1000', name: 'Neon Blazer', description: 'Score 1,000 in Neon Dash', icon: '⚡', color: '#ab47bc', points: 25 },
+  { id: 'neon_5000', name: 'Neon Legend', description: 'Score 5,000 in Neon Dash', icon: '🌟', color: '#ffee58', points: 45, secret: true },
+
+  // Global milestones
+  { id: 'played_50', name: 'On A Roll', description: 'Play 50 games total', icon: '🎲', color: '#ffa726', points: 30 },
+  { id: 'playtime_10h', name: 'No Life', description: 'Play for 10 hours total', icon: '🕐', color: '#5c86ff', points: 50 },
 ];
 
 export function getAchievementById(id: string): Achievement | undefined {

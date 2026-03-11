@@ -55,7 +55,7 @@ interface GameWrapperProps {
 export { React };
 
 export function GameWrapper({ title, score, extra, children, onRestart, controls, footer }: GameWrapperProps) {
-  const { state, navigate } = useApp();
+  const { state, navigate, markGameIncomplete } = useApp();
   const gameId = state.activeGame;
   const [showDemoSheet, setShowDemoSheet] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -107,7 +107,10 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
             Hub
           </button>
           <button
-            onClick={() => onRestart?.()}
+            onClick={() => {
+              if (gameId) markGameIncomplete(gameId);
+              onRestart?.();
+            }}
             disabled={!onRestart}
             className="pressable h-11 rounded-2xl text-sm font-black disabled:opacity-40"
             style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', border: '1px solid var(--card-border)' }}

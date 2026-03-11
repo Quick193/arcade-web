@@ -74,7 +74,7 @@ function makeBricks(level: number): Brick[] {
 function createState(level = 1): GS {
   return {
     paddleX: W / 2 - PADDLE_W / 2,
-    balls: [{ x: W / 2, y: H - 80, vx: 3, vy: -4, trail: [] }],
+    balls: [{ x: W / 2, y: H - 80, vx: 2, vy: -3, trail: [] }],
     bricks: makeBricks(level),
     powerups: [],
     lasers: [],
@@ -139,8 +139,8 @@ export function BreakoutGame() {
     }
     if (gs.ballAttached) {
       gs.ballAttached = false;
-      gs.balls[0].vx = 3 + Math.random() * 2;
-      gs.balls[0].vy = -(3 + Math.random() * 2);
+      gs.balls[0].vx = 2 + Math.random() * 1.2;
+      gs.balls[0].vy = -(2.5 + Math.random() * 1);
     }
   }, []);
 
@@ -324,7 +324,7 @@ export function BreakoutGame() {
           ) {
             const rel = (ball.x - (gs.paddleX + paddleWidth / 2)) / (paddleWidth / 2);
             const angle = rel * (Math.PI * 5 / 12);
-            const speed = Math.min(10, Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy));
+            const speed = Math.min(7, Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy));
             ball.vx = speed * Math.sin(angle);
             ball.vy = -speed * Math.cos(angle);
             ball.y = H - 30 - BALL_R;
