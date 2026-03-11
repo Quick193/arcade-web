@@ -2160,7 +2160,7 @@ export function ChessGame() {
 
     if (phase === 'mode') {
       return (
-        <GameWrapper title="Chess Pro" onRestart={() => { }}>
+        <GameWrapper title="Chess Pro">
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '20px 16px', maxWidth: 320, margin: '0 auto' }}>
             {savedGames.length > 0 && (
               <div style={{ width: '100%' }}>
@@ -2220,7 +2220,7 @@ export function ChessGame() {
         { id: 'b', label: '⬛ Black (Move Second)' },
       ];
       return (
-        <GameWrapper title="Chess Pro" onRestart={() => { }}>
+        <GameWrapper title="Chess Pro">
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '24px 16px' }}>
             <div style={{ color: '#eee', fontSize: 18, fontWeight: 'bold', marginBottom: 8 }}>Your Color</div>
             {colors.map(({ id: col, label }) => (
@@ -2241,7 +2241,7 @@ export function ChessGame() {
         { id: 'hard', label: '🔴 Hard' },
       ];
       return (
-        <GameWrapper title="Chess Pro" onRestart={() => { }}>
+        <GameWrapper title="Chess Pro">
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '24px 16px' }}>
             <div style={{ color: '#eee', fontSize: 18, fontWeight: 'bold', marginBottom: 8 }}>AI Difficulty</div>
             {diffs.map(({ id: diff, label }) => (
@@ -2264,7 +2264,7 @@ export function ChessGame() {
         { id: '15+10', label: '🐢 15+10 Long', desc: '15 min + 10s increment', mins: 15, inc: 10 },
       ];
       return (
-        <GameWrapper title="Chess Pro" onRestart={() => { }}>
+        <GameWrapper title="Chess Pro">
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '20px 16px' }}>
             <div style={{ color: '#eee', fontSize: 18, fontWeight: 'bold', marginBottom: 4 }}>Time Control</div>
             {timeControls.map(({ id: tc, label, desc, mins, inc }) => (

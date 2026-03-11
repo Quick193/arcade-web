@@ -379,7 +379,7 @@ export function SudokuGame() {
 
   if (!configured) {
     return (
-      <GameWrapper title="Sudoku" onRestart={() => setConfigured(false)}>
+      <GameWrapper title="Sudoku">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: 24 }}>
           <div style={{ color: '#fff', fontSize: 18 }}>Select Difficulty</div>
           {DIFFICULTIES.map((d, i) => (

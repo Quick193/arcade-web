@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import type {
   AppState,
+  MountedGame,
   Settings,
   GameStats,
   Toast,
@@ -78,6 +79,8 @@ const DEFAULT_PROFILE = makeDefaultProfile();
 const INITIAL_STATE: AppState = {
   screen: 'menu',
   activeGame: null,
+  mountedGames: [],
+  gameInstanceCounter: 0,
   settings: DEFAULT_SETTINGS,
   profiles: [DEFAULT_PROFILE],
   activeProfileId: DEFAULT_PROFILE.id,
@@ -90,6 +93,8 @@ type Action =
   | { type: 'MARK_GAME_INCOMPLETE'; gameId: string }
   | { type: 'DISMISS_FROM_RECENTS'; gameId: string }
   | { type: 'CLEAR_INCOMPLETE_GAME' }
+  | { type: 'PAUSE_GAME'; started: boolean }
+  | { type: 'UNMOUNT_GAME'; gameId: string }
   | { type: 'UPDATE_PROFILE'; patch: Partial<PlayerProfile> }
   | { type: 'SET_GAME_DEMO_MODE'; gameId: string; mode: DemoMode }
   | { type: 'RECORD_GAME_DEMO_ACTION'; gameId: string; action: string; traits?: Partial<DemoLearningTraits> }
@@ -131,11 +136,45 @@ function normalizeProfile(profile: Profile): Profile {
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'NAVIGATE': {
-      const navState = { ...state, screen: action.screen, activeGame: action.game ?? null };
       if (action.screen === 'game' && action.game) {
-        return updateActiveProfile(navState, p => ({ ...p, lastIncompleteGameId: action.game! }));
+        const profile = getActiveProfile(state);
+        const alreadyMounted = state.mountedGames.some(g => g.id === action.game);
+        const isResume = profile.lastIncompleteGameId === action.game && alreadyMounted;
+
+        if (isResume) {
+          // Resume paused game — keep same React instance (no remount, state preserved)
+          return { ...state, screen: 'game', activeGame: action.game };
+        }
+        // Fresh start — new instanceKey forces React to remount the component
+        const newKey = state.gameInstanceCounter + 1;
+        const mountedGames: MountedGame[] = [
+          ...state.mountedGames.filter(g => g.id !== action.game),
+          { id: action.game, instanceKey: newKey },
+        ];
+        return { ...state, screen: 'game', activeGame: action.game, mountedGames, gameInstanceCounter: newKey };
       }
-      return navState;
+      // Non-game screen: only change the screen, keep mountedGames/activeGame alive
+      return { ...state, screen: action.screen };
+    }
+
+    case 'PAUSE_GAME': {
+      const gameId = state.activeGame;
+      if (action.started && gameId) {
+        // Game was actually played — keep it mounted and mark as incomplete for Continue Playing
+        return updateActiveProfile(
+          { ...state, screen: 'menu' },
+          p => ({ ...p, lastIncompleteGameId: gameId })
+        );
+      }
+      // Game was never started — just unmount it silently
+      const mountedGames = gameId ? state.mountedGames.filter(g => g.id !== gameId) : state.mountedGames;
+      return { ...state, screen: 'menu', mountedGames };
+    }
+
+    case 'UNMOUNT_GAME': {
+      const mountedGames = state.mountedGames.filter(g => g.id !== action.gameId);
+      const activeGame = state.activeGame === action.gameId ? null : state.activeGame;
+      return { ...state, mountedGames, activeGame, screen: 'menu' };
     }
 
     case 'UPDATE_SETTINGS': {
@@ -155,8 +194,13 @@ function reducer(state: AppState, action: Action): AppState {
         hiddenFromRecents: [...(p.hiddenFromRecents ?? []).filter(id => id !== action.gameId), action.gameId],
       }));
 
-    case 'CLEAR_INCOMPLETE_GAME':
-      return updateActiveProfile(state, p => ({ ...p, lastIncompleteGameId: null }));
+    case 'CLEAR_INCOMPLETE_GAME': {
+      const incompleteId = getActiveProfile(state).lastIncompleteGameId;
+      const mountedGames = incompleteId
+        ? state.mountedGames.filter(g => g.id !== incompleteId)
+        : state.mountedGames;
+      return updateActiveProfile({ ...state, mountedGames }, p => ({ ...p, lastIncompleteGameId: null }));
+    }
 
     case 'UPDATE_PROFILE':
       return updateActiveProfile(state, p => ({ ...p, ...action.patch }));
@@ -341,6 +385,10 @@ interface AppContextValue {
   resetStats: () => void;
   resetAchievements: () => void;
   markGameIncomplete: (gameId: string) => void;
+  /** Pause current game: if started=true, keeps it mounted and shows it in Continue Playing. */
+  pauseGame: (started: boolean) => void;
+  /** Unmount a game immediately (without pause) and return to menu. */
+  unmountGame: (gameId: string) => void;
   dismissFromRecents: (gameId: string) => void;
   clearIncompleteGame: () => void;
   activeProfile: Profile;
@@ -544,6 +592,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const markGameIncomplete = useCallback((gameId: string) => {
     dispatch({ type: 'MARK_GAME_INCOMPLETE', gameId });
   }, []);
+  const pauseGame = useCallback((started: boolean) => {
+    dispatch({ type: 'PAUSE_GAME', started });
+  }, []);
+  const unmountGame = useCallback((gameId: string) => {
+    dispatch({ type: 'UNMOUNT_GAME', gameId });
+  }, []);
   const dismissFromRecents = useCallback((gameId: string) => {
     dispatch({ type: 'DISMISS_FROM_RECENTS', gameId });
   }, []);
@@ -552,7 +606,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AppContext.Provider value={{ state, navigate, updateSettings, updateProfile, setGameDemoMode, recordGameDemoAction, addProfile, switchProfile, deleteProfile, toggleFavoriteGame, recordGame, checkAchievements, bestScore, resetStats, resetAchievements, markGameIncomplete, dismissFromRecents, clearIncompleteGame, activeProfile }}>
+    <AppContext.Provider value={{ state, navigate, updateSettings, updateProfile, setGameDemoMode, recordGameDemoAction, addProfile, switchProfile, deleteProfile, toggleFavoriteGame, recordGame, checkAchievements, bestScore, resetStats, resetAchievements, markGameIncomplete, pauseGame, unmountGame, dismissFromRecents, clearIncompleteGame, activeProfile }}>
       {children}
     </AppContext.Provider>
   );

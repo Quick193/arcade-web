@@ -147,18 +147,17 @@ export function MenuScreen() {
 
         {!search && category === 'all' && favoriteGames.length > 0 && (
           <GameSection title="Favorites" subtitle="Your pinned quick-launch games.">
-            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar snap-carousel carousel-mask">
+            <div className="grid grid-cols-2 gap-3">
               {favoriteGames.map((game) => (
-                <div key={game.id} className="min-w-[210px] max-w-[210px] flex-shrink-0">
-                  <GameCard
-                    game={game}
-                    played={(activeProfile.stats[game.id]?.gamesPlayed ?? 0) > 0}
-                    bestScore={activeProfile.stats[game.id]?.bestScore ?? 0}
-                    favorite
-                    onFavorite={() => toggleFavoriteGame(game.id)}
-                    onClick={() => navigate('game', game.id)}
-                  />
-                </div>
+                <GameCard
+                  key={game.id}
+                  game={game}
+                  played={(activeProfile.stats[game.id]?.gamesPlayed ?? 0) > 0}
+                  bestScore={activeProfile.stats[game.id]?.bestScore ?? 0}
+                  favorite
+                  onFavorite={() => toggleFavoriteGame(game.id)}
+                  onClick={() => navigate('game', game.id)}
+                />
               ))}
             </div>
           </GameSection>
@@ -166,19 +165,18 @@ export function MenuScreen() {
 
         {!search && category === 'all' && recentGames.length > 0 && (
           <GameSection title="Recent" subtitle="Your recently completed sessions.">
-            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar snap-carousel carousel-mask">
+            <div className="grid grid-cols-2 gap-3">
               {recentGames.map((game) => (
-                <div key={game.id} className="min-w-[210px] max-w-[210px] flex-shrink-0">
-                  <GameCard
-                    game={game}
-                    played
-                    bestScore={activeProfile.stats[game.id]?.bestScore ?? 0}
-                    favorite={favoriteIds.has(game.id)}
-                    onFavorite={() => toggleFavoriteGame(game.id)}
-                    onDismiss={() => dismissFromRecents(game.id)}
-                    onClick={() => navigate('game', game.id)}
-                  />
-                </div>
+                <GameCard
+                  key={game.id}
+                  game={game}
+                  played
+                  bestScore={activeProfile.stats[game.id]?.bestScore ?? 0}
+                  favorite={favoriteIds.has(game.id)}
+                  onFavorite={() => toggleFavoriteGame(game.id)}
+                  onDismiss={() => dismissFromRecents(game.id)}
+                  onClick={() => navigate('game', game.id)}
+                />
               ))}
             </div>
           </GameSection>

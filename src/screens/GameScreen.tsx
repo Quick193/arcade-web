@@ -1,4 +1,5 @@
 import { useApp } from '../store/AppContext';
+import { GameIdContext } from '../contexts/GameIdContext';
 import { SnakeGame } from '../games/SnakeGame';
 import { Game2048 } from '../games/Game2048';
 import { MemoryMatch } from '../games/MemoryMatch';
@@ -15,37 +16,51 @@ import { EndlessRunner } from '../games/EndlessRunner';
 import { ChessGame } from '../games/ChessGame';
 import { NeonBlobDash } from '../games/NeonBlobDash';
 
-export function GameScreen() {
-  const { state, navigate } = useApp();
-  const gameId = state.activeGame;
+interface GameScreenProps {
+  /** The game ID to render. When omitted falls back to state.activeGame (legacy). */
+  gameId?: string;
+}
 
+export function GameScreen({ gameId: gameIdProp }: GameScreenProps) {
+  const { state, navigate } = useApp();
+  const gameId = gameIdProp ?? state.activeGame;
+
+  let content: React.ReactNode;
   switch (gameId) {
-    case 'snake': return <SnakeGame />;
-    case 'tetris': return <TetrisGame />;
-    case 'game2048': return <Game2048 />;
-    case 'memory': return <MemoryMatch />;
-    case 'pong': return <PongGame />;
-    case 'flappy': return <FlappyGame />;
-    case 'breakout': return <BreakoutGame />;
-    case 'spaceinvaders': return <SpaceInvadersGame />;
-    case 'minesweeper': return <MinesweeperGame />;
-    case 'connect4': return <Connect4Game />;
-    case 'sudoku': return <SudokuGame />;
-    case 'asteroids': return <AsteroidsGame />;
-    case 'runner': return <EndlessRunner />;
-    case 'chess': return <ChessGame />;
-    case 'neonblob': return <NeonBlobDash />;
+    case 'snake':        content = <SnakeGame />; break;
+    case 'tetris':       content = <TetrisGame />; break;
+    case 'game2048':     content = <Game2048 />; break;
+    case 'memory':       content = <MemoryMatch />; break;
+    case 'pong':         content = <PongGame />; break;
+    case 'flappy':       content = <FlappyGame />; break;
+    case 'breakout':     content = <BreakoutGame />; break;
+    case 'spaceinvaders':content = <SpaceInvadersGame />; break;
+    case 'minesweeper':  content = <MinesweeperGame />; break;
+    case 'connect4':     content = <Connect4Game />; break;
+    case 'sudoku':       content = <SudokuGame />; break;
+    case 'asteroids':    content = <AsteroidsGame />; break;
+    case 'runner':       content = <EndlessRunner />; break;
+    case 'chess':        content = <ChessGame />; break;
+    case 'neonblob':     content = <NeonBlobDash />; break;
     default:
-      return (
+      content = (
         <div className="flex flex-col items-center justify-center h-full gap-4">
           <p className="text-2xl">🕹️</p>
           <p style={{ color: 'var(--text-muted)' }}>Game not found: {gameId}</p>
-          <button onClick={() => navigate('menu')}
+          <button
+            onClick={() => navigate('menu')}
             className="px-6 py-2 rounded-xl pressable font-bold"
-            style={{ background: 'var(--accent-blue)', color: '#fff' }}>
+            style={{ background: 'var(--accent-blue)', color: '#fff' }}
+          >
             Back to Menu
           </button>
         </div>
       );
   }
+
+  return (
+    <GameIdContext.Provider value={gameId ?? ''}>
+      {content}
+    </GameIdContext.Provider>
+  );
 }

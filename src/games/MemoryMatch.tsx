@@ -229,7 +229,7 @@ export function MemoryMatch() {
 
   if (!difficulty) {
     return (
-      <GameWrapper title="Memory Match" onRestart={() => setDifficulty(null)}>
+      <GameWrapper title="Memory Match">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: 24 }}>
           <div style={{ color: '#fff', fontSize: 18, marginBottom: 8 }}>Select Difficulty</div>
           {DIFFICULTIES.map((d, i) => (

@@ -308,7 +308,7 @@ export function Connect4Game() {
 
   if (!configured) {
     return (
-      <GameWrapper title="Connect 4" onRestart={() => setConfigured(false)}>
+      <GameWrapper title="Connect 4">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: 24 }}>
           <div style={{ color: '#fff', fontSize: 18 }}>Mode</div>
           <div style={{ display: 'flex', gap: 12 }}>

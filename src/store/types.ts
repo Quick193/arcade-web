@@ -106,9 +106,18 @@ export interface SavedGame {
   analysisJson?: string;
 }
 
+export interface MountedGame {
+  id: string;
+  instanceKey: number; // changes on fresh start to force React remount
+}
+
 export interface AppState {
   screen: Screen;
   activeGame: string | null;
+  /** Games currently kept alive in memory (for pause/resume). */
+  mountedGames: MountedGame[];
+  /** Monotonically-increasing counter used to generate unique instanceKeys. */
+  gameInstanceCounter: number;
   settings: Settings;
   profiles: Profile[];
   activeProfileId: string;
