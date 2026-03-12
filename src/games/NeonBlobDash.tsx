@@ -163,13 +163,13 @@ export function NeonBlobDash() {
       // Low laser gate — must duck
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - 32, w: 60, h: 8, type: 'gate_low' });
     } else if (rand < 0.88 && score > 10) {
-      // High floating bar — must jump
-      gs.obstacles.push({ x: W + 20, y: GROUND_Y - 80, w: 50, h: 16, type: 'gate_high' });
+      // High electrified bar near ground — must jump over
+      gs.obstacles.push({ x: W + 20, y: GROUND_Y - 60, w: 50, h: 35, type: 'gate_high' });
     } else if (score > 18) {
       // Ceiling bar — hangs from near the top; blob must NOT jump while passing under it
       // (at peak, blob top ≈ 104; ceiling occupies y=60..105 → collision if jumping)
       const barW = 80 + Math.random() * 60;
-      gs.obstacles.push({ x: W + 20, y: 60, w: barW, h: 45, type: 'ceiling_bar' });
+      gs.obstacles.push({ x: W + 20, y: 55, w: barW, h: 55, type: 'ceiling_bar' });
     } else {
       const h = 20 + Math.random() * 30;
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - h, w: 24, h, type: 'spike' });
@@ -328,61 +328,99 @@ export function NeonBlobDash() {
         ctx.shadowBlur = 6;
         ctx.strokeRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
       } else if (obstacle.type === 'gate_low') {
-        // Laser beam — thin horizontal beam in magenta with intense glow
+        // Full-screen laser gate with emitter posts — must duck
+        const t = Date.now() / 220;
+        const pulse = 0.65 + 0.35 * Math.sin(t);
         const beamY = obstacle.y + obstacle.h / 2;
+        const postH = GROUND_Y - obstacle.y;
+        // Left emitter post
+        ctx.fillStyle = '#440033';
+        ctx.shadowBlur = 0;
+        ctx.fillRect(obstacle.x, obstacle.y, 7, postH);
+        // Right emitter post
+        ctx.fillRect(obstacle.x + obstacle.w - 7, obstacle.y, 7, postH);
+        // Emitter nodes (glowing orbs at top of posts)
+        for (const px of [obstacle.x + 3.5, obstacle.x + obstacle.w - 3.5]) {
+          ctx.shadowColor = '#ff00ff';
+          ctx.shadowBlur = 20 * pulse;
+          ctx.fillStyle = `rgba(255, 80, 255, ${pulse})`;
+          ctx.beginPath();
+          ctx.arc(px, obstacle.y - 4, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Beam extends to screen edges for wall-to-wall laser feel
+        const beamLeft = Math.min(obstacle.x, 0);
+        const beamRight = Math.max(obstacle.x + obstacle.w, W);
         ctx.shadowColor = '#ff00ff';
-        ctx.shadowBlur = 20;
-        // Core beam
-        ctx.strokeStyle = '#ff00ff';
+        ctx.shadowBlur = 28 * pulse;
+        ctx.strokeStyle = `rgba(255, 0, 255, ${pulse})`;
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(obstacle.x, beamY);
-        ctx.lineTo(obstacle.x + obstacle.w, beamY);
+        ctx.moveTo(beamLeft, beamY);
+        ctx.lineTo(beamRight, beamY);
         ctx.stroke();
-        // Outer glow layer
-        ctx.strokeStyle = 'rgba(255,0,255,0.3)';
-        ctx.lineWidth = 7;
-        ctx.shadowBlur = 30;
+        // Wide soft glow halo
+        ctx.strokeStyle = `rgba(255, 0, 255, 0.18)`;
+        ctx.lineWidth = 16;
+        ctx.shadowBlur = 40;
         ctx.beginPath();
-        ctx.moveTo(obstacle.x, beamY);
-        ctx.lineTo(obstacle.x + obstacle.w, beamY);
+        ctx.moveTo(beamLeft, beamY);
+        ctx.lineTo(beamRight, beamY);
         ctx.stroke();
-        // End dots
-        ctx.fillStyle = '#ff88ff';
-        ctx.shadowBlur = 10;
-        ctx.beginPath();
-        ctx.arc(obstacle.x, beamY, 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(obstacle.x + obstacle.w, beamY, 3, 0, Math.PI * 2);
-        ctx.fill();
-        // DUCK label above
-        ctx.shadowBlur = 6;
+        // DUCK label
+        ctx.shadowBlur = 8;
         ctx.fillStyle = '#ff88ff';
         ctx.font = 'bold 9px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('DUCK', obstacle.x + obstacle.w / 2, obstacle.y - 4);
+        ctx.fillText('DUCK', obstacle.x + obstacle.w / 2, obstacle.y - 12);
         ctx.textAlign = 'left';
       } else {
-        // gate_high: floating energy platform in teal with glow
-        ctx.fillStyle = '#00ffcc';
-        ctx.shadowColor = '#00ffcc';
-        ctx.shadowBlur = 14;
+        // gate_high: electrified low barrier — must jump over
+        const t = Date.now() / 230;
+        const pulse = 0.65 + 0.35 * Math.sin(t);
+        // Body gradient
+        const grad = ctx.createLinearGradient(obstacle.x, obstacle.y, obstacle.x, obstacle.y + obstacle.h);
+        grad.addColorStop(0, `rgba(0, 255, 180, ${0.85 * pulse})`);
+        grad.addColorStop(1, 'rgba(0, 80, 60, 0.85)');
+        ctx.fillStyle = grad;
+        ctx.shadowColor = '#00ffaa';
+        ctx.shadowBlur = 18 * pulse;
         ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
         // Bright top edge
-        ctx.strokeStyle = '#aaffee';
-        ctx.lineWidth = 2;
-        ctx.shadowBlur = 8;
+        ctx.strokeStyle = `rgba(180, 255, 240, ${pulse})`;
+        ctx.lineWidth = 2.5;
+        ctx.shadowBlur = 14;
         ctx.beginPath();
         ctx.moveTo(obstacle.x, obstacle.y + 1);
         ctx.lineTo(obstacle.x + obstacle.w, obstacle.y + 1);
         ctx.stroke();
-        // JUMP label above
+        // Dashed electric bottom edge
+        ctx.strokeStyle = `rgba(0, 255, 160, 0.6)`;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 3]);
+        ctx.beginPath();
+        ctx.moveTo(obstacle.x, obstacle.y + obstacle.h - 1);
+        ctx.lineTo(obstacle.x + obstacle.w, obstacle.y + obstacle.h - 1);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // End emitter posts
+        ctx.shadowBlur = 0;
+        for (const px of [obstacle.x, obstacle.x + obstacle.w - 5]) {
+          ctx.fillStyle = '#003322';
+          ctx.fillRect(px, obstacle.y - 6, 5, obstacle.h + 6);
+          ctx.shadowColor = '#00ffaa';
+          ctx.shadowBlur = 14 * pulse;
+          ctx.fillStyle = `rgba(0, 255, 180, ${pulse})`;
+          ctx.beginPath();
+          ctx.arc(px + 2.5, obstacle.y - 6, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // JUMP label
+        ctx.shadowBlur = 8;
         ctx.fillStyle = '#aaffee';
         ctx.font = 'bold 9px monospace';
         ctx.textAlign = 'center';
-        ctx.shadowBlur = 6;
-        ctx.fillText('JUMP', obstacle.x + obstacle.w / 2, obstacle.y - 4);
+        ctx.fillText('JUMP', obstacle.x + obstacle.w / 2, obstacle.y - 14);
         ctx.textAlign = 'left';
       }
       ctx.restore();
@@ -514,7 +552,7 @@ export function NeonBlobDash() {
           die(gs);
           break;
         }
-        if (obstacle.type === 'gate_high' && gs.onGround && blobBottom > obstacle.y && blobTop < obstacle.y + obstacle.h) {
+        if (obstacle.type === 'gate_high' && blobBottom > obstacle.y && blobTop < obstacle.y + obstacle.h) {
           die(gs);
           break;
         }
