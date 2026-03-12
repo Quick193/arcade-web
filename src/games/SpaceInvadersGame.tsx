@@ -27,7 +27,8 @@ interface Particle { x: number; y: number; vx: number; vy: number; life: number;
 interface GS {
   invaders: Invader[];
   playerX: number;
-  playerBullet: Bullet | null;
+  playerBullets: Bullet[];
+  lastPlayerShot: number;
   enemyBullets: Bullet[];
   shields: Shield[];
   ufo: UFO;
@@ -122,7 +123,8 @@ function createState(wave = 1): GS {
   return {
     invaders: makeInvaders(),
     playerX: W / 2 - 14,
-    playerBullet: null,
+    playerBullets: [],
+    lastPlayerShot: 0,
     enemyBullets: [],
     shields: [20, 85, 150, 215].map(makeShield),
     ufo: { x: -30, y: 30, score: 0, active: false },
@@ -131,7 +133,8 @@ function createState(wave = 1): GS {
     wave,
     sweepDx: 1,
     sweepTimer: 0,
-    sweepSpeed: Math.max(30, 80 - wave * 10),
+    // Wave 1 starts very slow; each wave meaningfully faster; hard cap at 18ms
+    sweepSpeed: Math.max(18, 240 - wave * 28),
     animTimer: 0,
     animFrame: 0,
     gameOver: false,
@@ -185,9 +188,12 @@ export function SpaceInvadersGame() {
     const gs = gsRef.current;
     if (manual && aiEnabledRef.current) gs.aiDisabled = true;
     startRun(manual);
-    if (gs.playerBullet) return;
+    const now = performance.now();
+    if (now - gs.lastPlayerShot < 150) return;  // 150 ms cooldown — spam-friendly
+    if (gs.playerBullets.length >= 3) return;   // max 3 bullets in flight
+    gs.lastPlayerShot = now;
     recordPlayerAction('shoot', { aggression: 0.7, precision: 0.6 });
-    gs.playerBullet = { x: gs.playerX + 14, y: H - 45, vy: -8 };
+    gs.playerBullets.push({ x: gs.playerX + 14, y: H - 45, vy: -8 });
   }, [recordPlayerAction, startRun]);
 
   const finishRun = useCallback((gs: GS) => {
@@ -303,10 +309,8 @@ export function SpaceInvadersGame() {
       ctx.fill();
     }
 
-    if (gs.playerBullet) {
-      ctx.fillStyle = '#ff5';
-      ctx.fillRect(gs.playerBullet.x - 1, gs.playerBullet.y, 2, 12);
-    }
+    ctx.fillStyle = '#ff5';
+    for (const pb of gs.playerBullets) ctx.fillRect(pb.x - 1, pb.y, 2, 12);
 
     ctx.fillStyle = '#f44';
     for (const bullet of gs.enemyBullets) ctx.fillRect(bullet.x - 1, bullet.y, 3, 8);
@@ -381,43 +385,47 @@ export function SpaceInvadersGame() {
         }
       }
 
-      if (gs.playerBullet) {
-        gs.playerBullet.y += gs.playerBullet.vy;
-        if (gs.playerBullet.y < 0) gs.playerBullet = null;
-        else {
-          for (const invader of alive) {
-            if (gs.playerBullet && gs.playerBullet.x > invader.x && gs.playerBullet.x < invader.x + INVADER_W && gs.playerBullet.y < invader.y + INVADER_H && gs.playerBullet.y > invader.y) {
-              invader.alive = false;
-              gs.score += INVADER_SCORES[invader.type];
-              gs.playerBullet = null;
-              for (let index = 0; index < 5; index += 1) gs.particles.push({ x: invader.x + INVADER_W / 2, y: invader.y + INVADER_H / 2, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, life: 30, color: '#ff0' });
-              break;
-            }
+      for (let bi = gs.playerBullets.length - 1; bi >= 0; bi -= 1) {
+        const pb = gs.playerBullets[bi];
+        pb.y += pb.vy;
+        if (pb.y < 0) { gs.playerBullets.splice(bi, 1); continue; }
+
+        // Bullet vs invaders
+        let bulletHit = false;
+        for (const invader of alive) {
+          if (pb.x > invader.x && pb.x < invader.x + INVADER_W && pb.y < invader.y + INVADER_H && pb.y > invader.y) {
+            invader.alive = false;
+            gs.score += INVADER_SCORES[invader.type];
+            gs.playerBullets.splice(bi, 1);
+            for (let index = 0; index < 5; index += 1) gs.particles.push({ x: invader.x + INVADER_W / 2, y: invader.y + INVADER_H / 2, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, life: 30, color: '#ff0' });
+            bulletHit = true;
+            break;
           }
-          // Check player bullet vs shields
-          if (gs.playerBullet) {
-            shieldHitCheck: for (const shield of gs.shields) {
-              const bx = gs.playerBullet.x;
-              const by = gs.playerBullet.y;
-              if (bx < shield.x || bx > shield.x + 40 || by + 12 < shield.y || by > shield.y + 25) continue;
-              for (let r = 0; r < shield.cells.length; r++) {
-                for (let c = 0; c < shield.cells[r].length; c++) {
-                  if (!shield.cells[r][c]) continue;
-                  const cx = shield.x + c * 5;
-                  const cy = shield.y + r * 5;
-                  if (bx >= cx && bx <= cx + 5 && by <= cy + 5 && by + 12 >= cy) {
-                    shield.cells[r][c] = false;
-                    gs.playerBullet = null;
-                    break shieldHitCheck;
-                  }
-                }
+        }
+        if (bulletHit) continue;
+
+        // Bullet vs shields
+        shieldHitCheck: for (const shield of gs.shields) {
+          const bx = pb.x;
+          const by = pb.y;
+          if (bx < shield.x || bx > shield.x + 40 || by + 12 < shield.y || by > shield.y + 25) continue;
+          for (let r = 0; r < shield.cells.length; r++) {
+            for (let c = 0; c < shield.cells[r].length; c++) {
+              if (!shield.cells[r][c]) continue;
+              const cx = shield.x + c * 5;
+              const cy = shield.y + r * 5;
+              if (bx >= cx && bx <= cx + 5 && by <= cy + 5 && by + 12 >= cy) {
+                shield.cells[r][c] = false;
+                gs.playerBullets.splice(bi, 1);
+                break shieldHitCheck;
               }
             }
           }
         }
       }
 
-      const shootInterval = Math.max(800, 1500 - gs.wave * 100);
+      // Enemy shoots slower on early waves, faster on later waves
+      const shootInterval = Math.max(600, 2800 - gs.wave * 250);
       if (now - gs.lastEnemyShot > shootInterval) {
         gs.lastEnemyShot = now;
         const bottomByCol: Record<number, Invader> = {};
@@ -428,7 +436,8 @@ export function SpaceInvadersGame() {
         const shooters = Object.values(bottomByCol);
         if (shooters.length) {
           const shooter = shooters[Math.floor(Math.random() * shooters.length)];
-          gs.enemyBullets.push({ x: shooter.x + INVADER_W / 2, y: shooter.y + INVADER_H, vy: 4 + gs.wave * 0.5 });
+          // Wave 1: bullet vy ≈ 2.5; each wave adds 0.4; capped at 7
+          gs.enemyBullets.push({ x: shooter.x + INVADER_W / 2, y: shooter.y + INVADER_H, vy: Math.min(7, 2 + gs.wave * 0.4) });
         }
       }
 
@@ -491,8 +500,10 @@ export function SpaceInvadersGame() {
 
       if (alive.length === 0) {
         const carryScore = gs.score;
+        const carryLives = gs.lives;
         gsRef.current = createState(gs.wave + 1);
         gsRef.current.score = carryScore;
+        gsRef.current.lives = carryLives;
         gsRef.current.started = true;
       }
 

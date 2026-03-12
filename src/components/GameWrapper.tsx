@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useContext, useCallback } from 'react';
 import { useApp } from '../store/AppContext';
 import { GameIdContext } from '../contexts/GameIdContext';
+import { GamePausedContext } from '../contexts/GamePausedContext';
 import { useAIDemo } from '../hooks/useAIDemo';
 import type { DemoMode } from '../store/types';
 
@@ -222,7 +223,10 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
         ref={gameAreaRef}
         className="flex-1 flex items-center justify-center overflow-hidden relative px-3 py-3"
       >
-        {children}
+        {/* Provide pause state so useGameLoop freezes canvas loops while sheet is open */}
+        <GamePausedContext.Provider value={showExitConfirm}>
+          {children}
+        </GamePausedContext.Provider>
       </div>
 
       {/* Footer controls */}

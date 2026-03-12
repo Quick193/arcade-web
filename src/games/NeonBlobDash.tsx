@@ -17,7 +17,7 @@ const BASE_SPEED = 4.1;
 const BLOB_X = 70;
 const BLOB_R = 18;
 
-interface Obstacle { x: number; y: number; w: number; h: number; type: 'spike' | 'wall' | 'gate_low' | 'gate_high'; }
+interface Obstacle { x: number; y: number; w: number; h: number; type: 'spike' | 'wall' | 'gate_low' | 'gate_high' | 'ceiling_bar' | 'double_spike'; }
 interface Particle { x: number; y: number; vx: number; vy: number; color: string; life: number; size: number; }
 interface Star { x: number; y: number; brightness: number; }
 interface GS {
@@ -143,16 +143,33 @@ export function NeonBlobDash() {
 
   const spawnObstacle = useCallback((gs: GS) => {
     const rand = Math.random();
-    if (rand < 0.4) {
+    const score = gs.score;
+
+    if (rand < 0.28) {
+      // Single spike
       const h = 20 + Math.random() * 30;
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - h, w: 24, h, type: 'spike' });
-    } else if (rand < 0.65) {
-      const h = 30 + Math.random() * 40;
+    } else if (rand < 0.48 && score > 3) {
+      // Double spike — two close together, wider jump required
+      const h1 = 18 + Math.random() * 22;
+      const h2 = 16 + Math.random() * 26;
+      gs.obstacles.push({ x: W + 20,      y: GROUND_Y - h1, w: 22, h: h1, type: 'double_spike' });
+      gs.obstacles.push({ x: W + 20 + 30, y: GROUND_Y - h2, w: 22, h: h2, type: 'double_spike' });
+    } else if (rand < 0.62) {
+      // Wall
+      const h = 32 + Math.random() * 40;
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - h, w: 18, h, type: 'wall' });
-    } else if (rand < 0.8 && gs.score > 5) {
+    } else if (rand < 0.76 && score > 5) {
+      // Low laser gate — must duck
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - 32, w: 60, h: 8, type: 'gate_low' });
-    } else if (gs.score > 10) {
+    } else if (rand < 0.88 && score > 10) {
+      // High floating bar — must jump
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - 80, w: 50, h: 16, type: 'gate_high' });
+    } else if (score > 18) {
+      // Ceiling bar — hangs from near the top; blob must NOT jump while passing under it
+      // (at peak, blob top ≈ 104; ceiling occupies y=60..105 → collision if jumping)
+      const barW = 80 + Math.random() * 60;
+      gs.obstacles.push({ x: W + 20, y: 60, w: barW, h: 45, type: 'ceiling_bar' });
     } else {
       const h = 20 + Math.random() * 30;
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - h, w: 24, h, type: 'spike' });
@@ -173,13 +190,16 @@ export function NeonBlobDash() {
       if (obstacle.x - lookAhead > blobRight) continue;
       if (obstacle.x + obstacle.w < BLOB_X - BLOB_R) continue;
 
-      if (obstacle.type === 'spike' || obstacle.type === 'wall') {
+      if (obstacle.type === 'spike' || obstacle.type === 'wall' || obstacle.type === 'double_spike') {
         const jumpEarly = !isAdaptive || getActionWeight('jump') >= getActionWeight('duck') || getTraitValue('risk') > 0.48;
         if (gs.onGround && jumpEarly) jump(false);
       } else if (obstacle.type === 'gate_low') {
         duck(true, false);
       } else if (obstacle.type === 'gate_high' && gs.onGround) {
         jump(false);
+      } else if (obstacle.type === 'ceiling_bar') {
+        // Stay on ground — do NOT jump
+        duck(false, false);
       }
       break;
     }
@@ -218,7 +238,51 @@ export function NeonBlobDash() {
 
     gs.obstacles.forEach((obstacle) => {
       ctx.save();
-      if (obstacle.type === 'spike') {
+      if (obstacle.type === 'double_spike') {
+        // Same as spike but slightly different colour to signal "wider gap needed"
+        ctx.shadowColor = '#ff4400';
+        ctx.shadowBlur = 18;
+        ctx.fillStyle = '#ff3300';
+        ctx.beginPath();
+        ctx.moveTo(obstacle.x, obstacle.y + obstacle.h);
+        ctx.lineTo(obstacle.x + obstacle.w / 2, obstacle.y);
+        ctx.lineTo(obstacle.x + obstacle.w, obstacle.y + obstacle.h);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#ff8844'; ctx.lineWidth = 1.5; ctx.shadowBlur = 8; ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,200,180,0.6)'; ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(obstacle.x + obstacle.w / 2, obstacle.y + 2);
+        ctx.lineTo(obstacle.x + 2, obstacle.y + obstacle.h - 1);
+        ctx.stroke();
+      } else if (obstacle.type === 'ceiling_bar') {
+        // Horizontal ceiling hazard — hanging electric beam
+        const t = Date.now() / 300;
+        const pulse = 0.7 + 0.3 * Math.sin(t);
+        ctx.shadowColor = '#ffcc00'; ctx.shadowBlur = 24 * pulse;
+        // Dark background plate
+        ctx.fillStyle = '#1a1000';
+        ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
+        // Glowing warning stripes
+        ctx.fillStyle = `rgba(255,200,0,${0.15 * pulse})`;
+        ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
+        // Bright top edge
+        ctx.strokeStyle = `rgba(255,220,0,${pulse})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(obstacle.x, obstacle.y); ctx.lineTo(obstacle.x + obstacle.w, obstacle.y); ctx.stroke();
+        // Electric bottom edge
+        ctx.strokeStyle = `rgba(255,180,0,${pulse})`;
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([6, 3]);
+        ctx.beginPath(); ctx.moveTo(obstacle.x, obstacle.y + obstacle.h); ctx.lineTo(obstacle.x + obstacle.w, obstacle.y + obstacle.h); ctx.stroke();
+        ctx.setLineDash([]);
+        // "STAY LOW" warning label just below the bar
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = '#ffdd44';
+        ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
+        ctx.fillText('STAY LOW', obstacle.x + obstacle.w / 2, obstacle.y + obstacle.h + 11);
+        ctx.textAlign = 'left';
+      } else if (obstacle.type === 'spike') {
         // Sharp triangle with bright red neon glow and outline
         ctx.shadowColor = '#ff0000';
         ctx.shadowBlur = 18;
@@ -442,7 +506,7 @@ export function NeonBlobDash() {
 
       for (const obstacle of gs.obstacles) {
         if (obstacle.x + obstacle.w < blobLeft || obstacle.x > blobRight) continue;
-        if ((obstacle.type === 'spike' || obstacle.type === 'wall') && blobTop < obstacle.y + obstacle.h && blobBottom > obstacle.y) {
+        if ((obstacle.type === 'spike' || obstacle.type === 'wall' || obstacle.type === 'double_spike') && blobTop < obstacle.y + obstacle.h && blobBottom > obstacle.y) {
           die(gs);
           break;
         }
@@ -451,6 +515,11 @@ export function NeonBlobDash() {
           break;
         }
         if (obstacle.type === 'gate_high' && gs.onGround && blobBottom > obstacle.y && blobTop < obstacle.y + obstacle.h) {
+          die(gs);
+          break;
+        }
+        // ceiling_bar: dangerous only when blob is airborne (jumping)
+        if (obstacle.type === 'ceiling_bar' && !gs.onGround && blobTop < obstacle.y + obstacle.h && blobBottom > obstacle.y) {
           die(gs);
           break;
         }

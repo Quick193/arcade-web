@@ -1,11 +1,13 @@
 import { useEffect, useRef, useContext } from 'react';
 import { useApp } from '../store/AppContext';
 import { GameIdContext } from '../contexts/GameIdContext';
+import { GamePausedContext } from '../contexts/GamePausedContext';
 
 export function useGameLoop(onFrame: (dtMs: number, now: number) => void, enabled = true) {
   const callbackRef = useRef(onFrame);
   const { state } = useApp();
   const gameId = useContext(GameIdContext);
+  const isHubPaused = useContext(GamePausedContext);
 
   useEffect(() => {
     callbackRef.current = onFrame;
@@ -14,11 +16,12 @@ export function useGameLoop(onFrame: (dtMs: number, now: number) => void, enable
   // This game's loop should run only when it is the actively-displayed game.
   // When the game is mounted-but-hidden (display:none), we skip the callback
   // but keep the RAF alive so resuming is instant with no dt spike.
+  // Also pauses when the Hub confirmation sheet is open.
   const isActive = state.screen === 'game' && (!gameId || gameId === state.activeGame);
-  const isPausedRef = useRef(!isActive);
+  const isPausedRef = useRef(!isActive || isHubPaused);
   useEffect(() => {
-    isPausedRef.current = !isActive;
-  }, [isActive]);
+    isPausedRef.current = !isActive || isHubPaused;
+  }, [isActive, isHubPaused]);
 
   useEffect(() => {
     if (!enabled) return;
