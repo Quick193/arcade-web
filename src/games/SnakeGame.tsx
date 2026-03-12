@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { GameWrapper } from '../components/GameWrapper';
 import { GameOverlay } from '../components/GameOverlay';
 import { MobileControlBar } from '../components/MobileControlBar';
 import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
 import { useMobileCanvasSize } from '../hooks/useMobileCanvasSize';
+import { GamePausedContext } from '../contexts/GamePausedContext';
 
 const GRID = 20;
 const CELL = 16;
@@ -123,6 +124,10 @@ export function SnakeGame() {
   const [displayScore, setDisplayScore] = useState(0);
   const [displayLives, setDisplayLives] = useState(3);
   const [phase, setPhase] = useState<'playing' | 'gameover'>('playing');
+  const isHubPaused = useContext(GamePausedContext);
+  const isHubPausedRef = useRef(false);
+  isHubPausedRef.current = isHubPaused;
+
   const aiDemoRef = useRef(aiDemoMode);
   aiDemoRef.current = aiDemoMode;
   const aiOnRef = useRef(aiDemoMode);
@@ -376,7 +381,7 @@ export function SnakeGame() {
       if (!gs) return;
       const dt = Math.min(timestamp - gs.lastTime, 50);
       gs.lastTime = timestamp;
-      if (!gs.paused && !gs.gameOver) {
+      if (!gs.paused && !gs.gameOver && !isHubPausedRef.current) {
         if (aiOnRef.current && !gs.aiDisabled) aiStep(dt);
         gs.moveTimer += dt;
         gs.effectiveSpeed = gs.activePowerup === 0 ? gs.baseSpeed / 2 : gs.activePowerup === 1 ? gs.baseSpeed * 2 : gs.baseSpeed;

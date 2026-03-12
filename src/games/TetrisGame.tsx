@@ -1,7 +1,10 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { GameWrapper } from '../components/GameWrapper';
+import { GameOverlay } from '../components/GameOverlay';
+import { MobileControlBar } from '../components/MobileControlBar';
 import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
+import { GamePausedContext } from '../contexts/GamePausedContext';
 
 const COLS = 10;
 const ROWS = 20;
@@ -271,13 +274,19 @@ interface GameState {
 }
 
 export function TetrisGame() {
-  const { recordGame, checkAchievements } = useApp();
+  const { recordGame, checkAchievements, bestScore, navigate } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, mode: demoMode, cycleMode, getActionWeight, recordPlayerAction } = useAIDemo('tetris');
+  const isHubPaused = useContext(GamePausedContext);
+  const isHubPausedRef = useRef(false);
+  isHubPausedRef.current = isHubPaused;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gsRef = useRef<GameState | null>(null);
   const rafRef = useRef<number>(0);
   const [mode, setMode] = useState<Mode>('menu');
   const [displayScore, setDisplayScore] = useState(0);
+  const [gamePhase, setGamePhase] = useState<'playing' | 'gameover'>('playing');
+  const gamePhaseRef = useRef<'playing' | 'gameover'>('playing');
+  const best = bestScore('tetris');
   const aiDemoRef = useRef(aiDemoMode);
   aiDemoRef.current = aiDemoMode;
   const aiOnRef = useRef(aiDemoMode);
@@ -404,6 +413,8 @@ export function TetrisGame() {
 
   const startGame = useCallback((m: Mode) => {
     setMode(m);
+    setGamePhase('playing');
+    gamePhaseRef.current = 'playing';
     const q = [...makeBag(), ...makeBag()];
     const type = q.shift()!;
     const piece: Piece = { type, x: 3, y: 0, rot: 0 };
@@ -571,7 +582,7 @@ export function TetrisGame() {
       if (!gs) return;
       const dt = Math.min(timestamp - gs.lastTime, 100);
       gs.lastTime = timestamp;
-      if (!gs.paused && !gs.gameOver) {
+      if (!gs.paused && !gs.gameOver && !isHubPausedRef.current) {
         if (gs.mode === 'ultra' && gs.timeLeft !== null) {
           gs.timeLeft -= dt;
           if (gs.timeLeft <= 0) {
@@ -615,6 +626,10 @@ export function TetrisGame() {
         }
       }
       setDisplayScore(gs.score);
+      if (gs.gameOver && gamePhaseRef.current === 'playing') {
+        gamePhaseRef.current = 'gameover';
+        setGamePhase('gameover');
+      }
       render();
       rafRef.current = requestAnimationFrame(gameLoop);
     }
@@ -692,20 +707,45 @@ export function TetrisGame() {
   }
 
   return (
-    <GameWrapper title="Tetris Pro" score={displayScore} onRestart={() => startGame(mode)}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+    <GameWrapper
+      title="Tetris Pro"
+      score={displayScore}
+      onRestart={() => startGame(mode)}
+      controls={(
+        <MobileControlBar
+          items={[
+            { id: 'left',   label: '◀',      onPress: () => { const gs = gsRef.current; if (!gs || gs.gameOver || gs.paused) return; tryMoveFn(-1, 0); } },
+            { id: 'rotate', label: '↻ SPIN',  onPress: () => { const gs = gsRef.current; if (!gs || gs.gameOver || gs.paused) return; tryRotateFn(1); }, tone: 'accent' },
+            { id: 'right',  label: '▶',      onPress: () => { const gs = gsRef.current; if (!gs || gs.gameOver || gs.paused) return; tryMoveFn(1, 0); }, },
+            { id: 'drop',   label: '⬇ DROP', onPress: () => { const gs = gsRef.current; if (!gs || gs.gameOver || gs.paused) return; hardDropFn(); }, tone: 'danger' },
+          ]}
+          hint="◀ ▶ move · ↻ rotate · ⬇ hard drop · swipe canvas to soft drop"
+        />
+      )}
+    >
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
         <canvas ref={canvasRef} width={layout.CANVAS_W} height={layout.CANVAS_H} style={{ maxWidth: '100%', touchAction: 'none', display: 'block' }} />
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={toggleTetrisAI}
             style={{ padding: '5px 14px', fontSize: 12, background: demoMode === 'adaptive' ? '#7b1fa2' : aiDemoMode ? '#0288d1' : '#333', color: '#fff', border: 'none', borderRadius: 16, cursor: 'pointer' }}>
             {demoLabel}
           </button>
-          <button onClick={() => { cancelAnimationFrame(rafRef.current); setMode('menu'); }}
+          <button onClick={() => { cancelAnimationFrame(rafRef.current); navigate('menu'); }}
             style={{ padding: '5px 14px', fontSize: 12, background: '#555', color: '#fff', border: 'none', borderRadius: 16, cursor: 'pointer' }}>
-            Menu
+            Hub
           </button>
         </div>
-        <div style={{ color: '#555', fontSize: 11, textAlign: 'center' }}>Swipe left/right to move • Swipe up to drop • Tap to rotate</div>
+        <GameOverlay
+          visible={gamePhase === 'gameover'}
+          eyebrow="Game Over"
+          title="Stack Collapsed"
+          score={displayScore}
+          best={best}
+          primaryLabel="Play Again"
+          onPrimary={() => startGame(mode)}
+          secondaryLabel="Back to Hub"
+          onSecondary={() => { cancelAnimationFrame(rafRef.current); navigate('menu'); }}
+        />
       </div>
     </GameWrapper>
   );
