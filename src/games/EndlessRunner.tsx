@@ -153,7 +153,7 @@ function rectsOverlap(a: { x: number; y: number; w: number; h: number }, b: { x:
 }
 
 export function EndlessRunner() {
-  const { recordGame, checkAchievements, bestScore, navigate } = useApp();
+  const { recordGame, checkAchievements, bestScore, navigate, state } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('runner');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -167,6 +167,8 @@ export function EndlessRunner() {
   const sfx = useSfx();
   const sfxRef = useRef(sfx);
   sfxRef.current = sfx;
+  const showParticlesRef = useRef(state.settings.showParticles);
+  showParticlesRef.current = state.settings.showParticles;
 
   useEffect(() => {
     aiEnabledRef.current = aiDemoMode;
@@ -217,8 +219,10 @@ export function EndlessRunner() {
     gs.fireballCount -= 1;
     const worldX = gs.playerX + gs.worldX;
     gs.fireballs.push({ x: worldX + PLAYER_W + 4, y: gs.playerY + PLAYER_H / 2 - 5, vx: gs.speed + 12, phase: 0 });
-    for (let i = 0; i < 6; i += 1) {
-      gs.particles.push({ x: worldX + PLAYER_W, y: gs.playerY + PLAYER_H / 2, vx: 5 + Math.random() * 4, vy: (Math.random() - 0.5) * 3, color: i % 2 === 0 ? '#ff6600' : '#ffcc00', life: 0.4, size: 4 });
+    if (showParticlesRef.current) {
+      for (let i = 0; i < 6; i += 1) {
+        gs.particles.push({ x: worldX + PLAYER_W, y: gs.playerY + PLAYER_H / 2, vx: 5 + Math.random() * 4, vy: (Math.random() - 0.5) * 3, color: i % 2 === 0 ? '#ff6600' : '#ffcc00', life: 0.4, size: 4 });
+      }
     }
     recordPlayerAction('shoot', { aggression: 0.8, precision: 0.6 });
   }, [recordPlayerAction]);
@@ -236,8 +240,10 @@ export function EndlessRunner() {
     if (gs.invincTimer > 0) return;
     if (gs.shieldTimer > 0) {
       gs.shieldTimer = 0;
-      for (let index = 0; index < 10; index += 1) {
-        gs.particles.push({ x: gs.playerX + gs.worldX + PLAYER_W / 2, y: gs.playerY + PLAYER_H / 2, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8, color: '#4488ff', life: 0.5, size: 5 });
+      if (showParticlesRef.current) {
+        for (let index = 0; index < 10; index += 1) {
+          gs.particles.push({ x: gs.playerX + gs.worldX + PLAYER_W / 2, y: gs.playerY + PLAYER_H / 2, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8, color: '#4488ff', life: 0.5, size: 5 });
+        }
       }
       return;
     }
@@ -246,8 +252,10 @@ export function EndlessRunner() {
     gs.stompChain = 0;
     if (gs.lives <= 0) {
       sfxRef.current('die');
-      for (let index = 0; index < 20; index += 1) {
-        gs.particles.push({ x: gs.playerX + gs.worldX + PLAYER_W / 2, y: gs.playerY, vx: (Math.random() - 0.5) * 10, vy: -Math.random() * 8, color: '#ff4444', life: 1, size: 5 });
+      if (showParticlesRef.current) {
+        for (let index = 0; index < 20; index += 1) {
+          gs.particles.push({ x: gs.playerX + gs.worldX + PLAYER_W / 2, y: gs.playerY, vx: (Math.random() - 0.5) * 10, vy: -Math.random() * 8, color: '#ff4444', life: 1, size: 5 });
+        }
       }
       finishRun(gs);
       return;
@@ -546,8 +554,10 @@ export function EndlessRunner() {
         gs.playerVY = jumpPower;
         gs.onGround = false; gs.coyoteTimer = 0; gs.jumpHeldTime = 0;
         sfxRef.current('jump');
-        for (let index = 0; index < 6; index += 1) {
-          gs.particles.push({ x: gs.playerX + gs.worldX, y: gs.playerY + PLAYER_H, vx: (Math.random() - 0.5) * 4, vy: Math.random() * 2, color: '#88aaff', life: 0.4, size: 4 });
+        if (showParticlesRef.current) {
+          for (let index = 0; index < 6; index += 1) {
+            gs.particles.push({ x: gs.playerX + gs.worldX, y: gs.playerY + PLAYER_H, vx: (Math.random() - 0.5) * 4, vy: Math.random() * 2, color: '#88aaff', life: 0.4, size: 4 });
+          }
         }
       }
       gs.jumpQueued = false;
@@ -626,8 +636,10 @@ export function EndlessRunner() {
           if (fb.x < enemy.x + enemy.w && fb.x + 10 > enemy.x && fb.y < enemy.y + enemy.h && fb.y + 10 > enemy.y) {
             enemy.alive = false;
             gs.score += 200 * (gs.scoreMultTimer > 0 ? 2 : 1);
-            for (let pi = 0; pi < 8; pi += 1) {
-              gs.particles.push({ x: enemy.x + enemy.w / 2, y: enemy.y + enemy.h / 2, vx: (Math.random() - 0.5) * 7, vy: (Math.random() - 0.5) * 5, color: pi % 2 === 0 ? '#ff6600' : '#ffcc00', life: 0.6, size: 5 });
+            if (showParticlesRef.current) {
+              for (let pi = 0; pi < 8; pi += 1) {
+                gs.particles.push({ x: enemy.x + enemy.w / 2, y: enemy.y + enemy.h / 2, vx: (Math.random() - 0.5) * 7, vy: (Math.random() - 0.5) * 5, color: pi % 2 === 0 ? '#ff6600' : '#ffcc00', life: 0.6, size: 5 });
+              }
             }
             gs.fireballs.splice(fi, 1);
             hit = true;
@@ -652,8 +664,10 @@ export function EndlessRunner() {
             gs.stompChain += 1; gs.stompChainTimer = 1.5;
             const chainBonus = Math.min(gs.stompChain, 5) * 100;
             gs.score += chainBonus * (gs.scoreMultTimer > 0 ? 2 : 1);
-            for (let si = 0; si < 8; si++) {
-              gs.particles.push({ x: enemy.x + enemy.w / 2, y: enemy.y + enemy.h / 2, vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 4, color: '#ffd700', life: 0.5, size: 4 });
+            if (showParticlesRef.current) {
+              for (let si = 0; si < 8; si++) {
+                gs.particles.push({ x: enemy.x + enemy.w / 2, y: enemy.y + enemy.h / 2, vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 4, color: '#ffd700', life: 0.5, size: 4 });
+              }
             }
           } else {
             takeDamage(gs);
@@ -668,7 +682,7 @@ export function EndlessRunner() {
           recordPlayerAction('collect:coin', { exploration: 0.66, tempo: 0.58 });
           gs.coinsCollected += 1;
           gs.score += 10 * (gs.scoreMultTimer > 0 ? 2 : 1);
-          gs.particles.push({ x: coin.x, y: coin.y, vx: 0, vy: -3, color: '#ffd700', life: 0.5, size: 6 });
+          if (showParticlesRef.current) gs.particles.push({ x: coin.x, y: coin.y, vx: 0, vy: -3, color: '#ffd700', life: 0.5, size: 6 });
         }
       });
 
@@ -689,8 +703,10 @@ export function EndlessRunner() {
           else if (powerup.type === 'jump') gs.jumpBoostTimer = 8;
           else if (powerup.type === 'fireball') { gs.fireballCount += 6; gs.fireballTimer = 20; }
           gs.score += 50 * (gs.scoreMultTimer > 0 ? 2 : 1);
-          for (let ci = 0; ci < 6; ci++) {
-            gs.particles.push({ x: powerup.x + (Math.random() - 0.5) * 10, y: powerup.y - 12, vx: (Math.random() - 0.5) * 3, vy: -3 - Math.random() * 3, color: powerup.type === 'fireball' ? '#ff6600' : '#ffd700', life: 0.7, size: 5 });
+          if (showParticlesRef.current) {
+            for (let ci = 0; ci < 6; ci++) {
+              gs.particles.push({ x: powerup.x + (Math.random() - 0.5) * 10, y: powerup.y - 12, vx: (Math.random() - 0.5) * 3, vy: -3 - Math.random() * 3, color: powerup.type === 'fireball' ? '#ff6600' : '#ffd700', life: 0.7, size: 5 });
+            }
           }
         }
       });

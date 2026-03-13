@@ -150,7 +150,7 @@ function createState(wave = 1): GS {
 }
 
 export function SpaceInvadersGame() {
-  const { recordGame, checkAchievements, bestScore, navigate } = useApp();
+  const { recordGame, checkAchievements, bestScore, navigate, state } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('spaceinvaders');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -164,6 +164,8 @@ export function SpaceInvadersGame() {
   const sfx = useSfx();
   const sfxRef = useRef(sfx);
   sfxRef.current = sfx;
+  const showParticlesRef = useRef(state.settings.showParticles);
+  showParticlesRef.current = state.settings.showParticles;
 
   useEffect(() => {
     aiEnabledRef.current = aiDemoMode;
@@ -403,7 +405,7 @@ export function SpaceInvadersGame() {
             sfxRef.current('enemyDie');
             gs.score += INVADER_SCORES[invader.type];
             gs.playerBullets.splice(bi, 1);
-            for (let index = 0; index < 5; index += 1) gs.particles.push({ x: invader.x + INVADER_W / 2, y: invader.y + INVADER_H / 2, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, life: 30, color: '#ff0' });
+            if (showParticlesRef.current) { for (let index = 0; index < 5; index += 1) gs.particles.push({ x: invader.x + INVADER_W / 2, y: invader.y + INVADER_H / 2, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, life: 30, color: '#ff0' }); }
             bulletHit = true;
             break;
           }

@@ -70,7 +70,7 @@ function initGs(): GS {
 }
 
 export function NeonBlobDash() {
-  const { recordGame, checkAchievements, bestScore, navigate } = useApp();
+  const { recordGame, checkAchievements, bestScore, navigate, state } = useApp();
   const sfx = useSfx();
   const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('neonblob');
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -78,6 +78,8 @@ export function NeonBlobDash() {
   const gsRef = useRef<GS>(initGs());
   const hudSyncRef = useRef(0);
   const aiEnabledRef = useRef(aiDemoMode);
+  const showParticlesRef = useRef(state.settings.showParticles);
+  showParticlesRef.current = state.settings.showParticles;
   const [displayScore, setDisplayScore] = useState(0);
   const [phase, setPhase] = useState<'ready' | 'playing' | 'gameover'>('ready');
   const canvasSize = useMobileCanvasSize({ width: W, height: H, reservedVerticalSpace: 300 });
@@ -110,8 +112,10 @@ export function NeonBlobDash() {
       recordPlayerAction('jump', { aggression: 0.6, risk: 0.52, tempo: 0.6 });
       gs.blobVY = JUMP_POWER;
       gs.onGround = false;
-      for (let index = 0; index < 8; index += 1) {
-        gs.particles.push({ x: BLOB_X, y: gs.blobY + BLOB_R, vx: (Math.random() - 0.5) * 5, vy: Math.random() * 3, color: '#00ffff', life: 0.5, size: 4 });
+      if (showParticlesRef.current) {
+        for (let index = 0; index < 8; index += 1) {
+          gs.particles.push({ x: BLOB_X, y: gs.blobY + BLOB_R, vx: (Math.random() - 0.5) * 5, vy: Math.random() * 3, color: '#00ffff', life: 0.5, size: 4 });
+        }
       }
     }
   }, [recordPlayerAction]);
@@ -127,8 +131,10 @@ export function NeonBlobDash() {
   const die = useCallback((gs: GS) => {
     sfx('die');
     gs.alive = false;
-    for (let index = 0; index < 20; index += 1) {
-      gs.particles.push({ x: BLOB_X, y: gs.blobY, vx: (Math.random() - 0.5) * 10, vy: -Math.random() * 8, color: `hsl(${Math.random() * 60 + 160}, 100%, 60%)`, life: 1, size: 5 });
+    if (showParticlesRef.current) {
+      for (let index = 0; index < 20; index += 1) {
+        gs.particles.push({ x: BLOB_X, y: gs.blobY, vx: (Math.random() - 0.5) * 10, vy: -Math.random() * 8, color: `hsl(${Math.random() * 60 + 160}, 100%, 60%)`, life: 1, size: 5 });
+      }
     }
     recordGame('neonblob', false, gs.score * 10, gs.frame / 60);
     checkAchievements('neonblob', { score: gs.score });
@@ -575,7 +581,7 @@ export function NeonBlobDash() {
         return particle.life > 0;
       });
 
-      if (gs.frame % 3 === 0) {
+      if (showParticlesRef.current && gs.frame % 3 === 0) {
         gs.particles.push({ x: BLOB_X - BLOB_R, y: gs.blobY, vx: -2, vy: (Math.random() - 0.5) * 1, color: `hsl(${180 + Math.sin(gs.glowPhase) * 60}, 100%, 60%)`, life: 0.4, size: 6 });
       }
       if (gs.score > gs.bestSession) gs.bestSession = gs.score;

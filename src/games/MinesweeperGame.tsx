@@ -16,6 +16,9 @@ const CONFIGS: Record<Difficulty, Config> = {
   hard: { rows: 16, cols: 16, mines: 40 },
 };
 
+// Persist chosen difficulty for the session (survives game-over / restart cycles)
+let lastMinesweeperDifficulty: Difficulty | null = null;
+
 const NUM_COLORS = ['','#1565c0','#2e7d32','#c62828','#1a237e','#880e4f','#006064','#000','#555'];
 
 interface GS {
@@ -175,7 +178,7 @@ export function MinesweeperGame() {
     };
   }, []);
 
-  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
+  const [difficulty, setDifficulty] = useState<Difficulty | null>(lastMinesweeperDifficulty);
   const [gs, setGs] = useState<GS>(() => initGame('easy'));
 
   const reveal = useCallback((r: number, c: number) => {
@@ -285,6 +288,9 @@ export function MinesweeperGame() {
       return prev;
     });
   }, [recordPlayerAction]);
+
+  // Persist difficulty choice so it survives remounts within the session
+  useEffect(() => { lastMinesweeperDifficulty = difficulty; }, [difficulty]);
 
   // Timer
   useEffect(() => {

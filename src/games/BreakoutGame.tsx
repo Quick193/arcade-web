@@ -95,13 +95,15 @@ function createState(level = 1): GS {
 }
 
 export function BreakoutGame() {
-  const { recordGame, checkAchievements, bestScore, navigate } = useApp();
+  const { recordGame, checkAchievements, bestScore, navigate, state } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('breakout');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const gsRef = useRef<GS>(createState(1));
   const hudSyncRef = useRef(0);
   const aiEnabledRef = useRef(aiDemoMode);
+  const showParticlesRef = useRef(state.settings.showParticles);
+  showParticlesRef.current = state.settings.showParticles;
   const [displayScore, setDisplayScore] = useState(0);
   const [phase, setPhase] = useState<'ready' | 'playing' | 'gameover'>('ready');
   const canvasSize = useMobileCanvasSize({ width: W, height: H, reservedVerticalSpace: 300 });
@@ -120,6 +122,7 @@ export function BreakoutGame() {
   }, []);
 
   const spawnParticles = useCallback((x: number, y: number, color: string) => {
+    if (!showParticlesRef.current) return;
     const gs = gsRef.current;
     for (let index = 0; index < 7; index += 1) {
       const angle = Math.random() * Math.PI * 2;

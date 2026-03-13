@@ -1184,7 +1184,8 @@ function saveGameToStorage(saves: SavedGame[], gs: ChessState, setup: SetupState
 
 // ─── Main component ───────────────────────────────────────────
 export function ChessGame() {
-  const { recordGame, checkAchievements } = useApp();
+  const { recordGame, checkAchievements, state } = useApp();
+  const chessShowHints = state.settings.chessShowHints;
   const { isEnabled: aiDemoMode, isAdaptive, learning, mode: demoMode, cycleMode, getAdaptiveDelay, getActionWeight, recordPlayerAction } = useAIDemo('chess');
   const aiOnRef = useRef(aiDemoMode);
   const demoLabel = demoMode === 'adaptive' ? '🧠 Learn Me' : aiDemoMode ? '🤖 Classic AI' : '🎮 Demo Off';
@@ -2589,7 +2590,7 @@ export function ChessGame() {
                   style={{ padding: '5px 8px', fontSize: 11, background: demoMode === 'adaptive' ? '#7b1fa2' : aiDemoMode ? '#0288d1' : '#333', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
                   {demoLabel}
                 </button>
-                {gameMode === 'ai' && (
+                {gameMode === 'ai' && chessShowHints && (
                   <button onClick={handleHint}
                     style={{ padding: '5px 8px', fontSize: 11, background: '#1a5276', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
                     💡 Hint

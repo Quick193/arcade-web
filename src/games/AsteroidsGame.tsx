@@ -184,7 +184,7 @@ function aiControl(
 }
 
 export function AsteroidsGame() {
-  const { recordGame, checkAchievements, bestScore, navigate } = useApp();
+  const { recordGame, checkAchievements, bestScore, navigate, state } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('asteroids');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -192,6 +192,8 @@ export function AsteroidsGame() {
   const hudSyncRef = useRef(0);
   const startTimeRef = useRef(0);
   const aiEnabledRef = useRef(aiDemoMode);
+  const showParticlesRef = useRef(state.settings.showParticles);
+  showParticlesRef.current = state.settings.showParticles;
   const [score, setScore] = useState(0);
   const [phase, setPhase] = useState<'ready' | 'playing' | 'gameover'>('ready');
   const canvasSize = useMobileCanvasSize({ width: W, height: H, reservedVerticalSpace: 310 });
@@ -487,7 +489,7 @@ export function AsteroidsGame() {
             hitAsteroidIdx.add(asteroidIndex);
             hitBulletIdx.add(bulletIndex);
             gs.score += asteroid.size === 3 ? 20 : asteroid.size === 2 ? 50 : 100;
-            gs.particles.push(...spawnParticles(asteroid.pos, 8, '#aaa'));
+            if (showParticlesRef.current) gs.particles.push(...spawnParticles(asteroid.pos, 8, '#aaa'));
             if (asteroid.size > 1) {
               const size = (asteroid.size - 1) as 2 | 1;
               newAsteroids.push(spawnAsteroid(size, { ...asteroid.pos }));
@@ -504,7 +506,7 @@ export function AsteroidsGame() {
         for (let bulletIndex = 0; bulletIndex < gs.bullets.length; bulletIndex += 1) {
           if (dist(gs.bullets[bulletIndex].pos, gs.ufo.pos) < 18) {
             gs.score += 1000;
-            gs.particles.push(...spawnParticles(gs.ufo.pos, 12, '#f0f'));
+            if (showParticlesRef.current) gs.particles.push(...spawnParticles(gs.ufo.pos, 12, '#f0f'));
             gs.ufo = null;
             gs.bullets.splice(bulletIndex, 1);
             break;
@@ -529,7 +531,7 @@ export function AsteroidsGame() {
         }
 
         if (hit) {
-          gs.particles.push(...spawnParticles(ship.pos, 15, '#00ff88'));
+          if (showParticlesRef.current) gs.particles.push(...spawnParticles(ship.pos, 15, '#00ff88'));
           gs.lives -= 1;
           gs.ufoBullets = [];
           if (gs.lives <= 0) finishRun(gs);

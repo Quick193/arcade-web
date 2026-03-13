@@ -275,7 +275,7 @@ interface GameState {
 }
 
 export function TetrisGame() {
-  const { recordGame, checkAchievements, bestScore, navigate } = useApp();
+  const { recordGame, checkAchievements, bestScore, navigate, state } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, mode: demoMode, cycleMode, getActionWeight, recordPlayerAction } = useAIDemo('tetris');
   const isHubPaused = useContext(GamePausedContext);
   const isHubPausedRef = useRef(false);
@@ -283,6 +283,8 @@ export function TetrisGame() {
   const sfx = useSfx();
   const sfxRef = useRef(sfx);
   sfxRef.current = sfx;
+  const showGhostRef = useRef(state.settings.showGhostPiece);
+  showGhostRef.current = state.settings.showGhostPiece;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gsRef = useRef<GameState | null>(null);
   const rafRef = useRef<number>(0);
@@ -494,17 +496,19 @@ export function TetrisGame() {
         }
       }
       if (!gs.gameOver) {
-        const gy = ghostY(gs.grid, gs.piece);
-        const mat = getMatrix(gs.piece);
-        ctx.globalAlpha = 0.25;
-        ctx.fillStyle = COLORS[gs.piece.type];
-        for (let r = 0; r < mat.length; r++) {
-          for (let c = 0; c < mat[r].length; c++) {
-            if (!mat[r][c]) continue;
-            ctx.fillRect(SIDEBAR + (gs.piece.x + c) * CELL + 1, 30 + (gy + r) * CELL + 1, CELL - 2, CELL - 2);
+        if (showGhostRef.current) {
+          const gy = ghostY(gs.grid, gs.piece);
+          const mat = getMatrix(gs.piece);
+          ctx.globalAlpha = 0.25;
+          ctx.fillStyle = COLORS[gs.piece.type];
+          for (let r = 0; r < mat.length; r++) {
+            for (let c = 0; c < mat[r].length; c++) {
+              if (!mat[r][c]) continue;
+              ctx.fillRect(SIDEBAR + (gs.piece.x + c) * CELL + 1, 30 + (gy + r) * CELL + 1, CELL - 2, CELL - 2);
+            }
           }
+          ctx.globalAlpha = 1;
         }
-        ctx.globalAlpha = 1;
         const pmat = getMatrix(gs.piece);
         ctx.fillStyle = COLORS[gs.piece.type];
         for (let r = 0; r < pmat.length; r++) {

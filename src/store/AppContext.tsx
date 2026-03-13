@@ -14,6 +14,7 @@ import type {
 } from './types';
 import { applyTheme } from './themes';
 import { hapticHeavy, hapticSuccess } from '../utils/haptics';
+import { setMusicEnabled } from '../utils/music';
 import { ACHIEVEMENTS, getAchievementById } from './achievements';
 
 const DEFAULT_STATS: GameStats = {
@@ -450,6 +451,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     applyTheme(state.settings.theme);
   }, [state.settings.theme]);
+
+  // Start/stop ambient music when the setting changes
+  useEffect(() => {
+    setMusicEnabled(state.settings.musicEnabled);
+  }, [state.settings.musicEnabled]);
 
   const activeProfile = getActiveProfile(state);
 
