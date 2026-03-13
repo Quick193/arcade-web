@@ -13,6 +13,7 @@ import type {
   GameDemoLearningProfile,
 } from './types';
 import { applyTheme } from './themes';
+import { hapticHeavy, hapticSuccess } from '../utils/haptics';
 import { ACHIEVEMENTS, getAchievementById } from './achievements';
 
 const DEFAULT_STATS: GameStats = {
@@ -489,6 +490,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const recordGame = useCallback((gameId: string, won: boolean, score: number, duration: number) => {
+    hapticHeavy();
     dispatch({ type: 'RECORD_GAME', gameId, won, score, duration });
   }, []);
 
@@ -562,6 +564,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     for (const check of checks) {
       if (!unlocked.includes(check.id) && ACHIEVEMENTS.find(a => a.id === check.id) && check.condition()) {
+        hapticSuccess();
         dispatch({ type: 'UNLOCK_ACHIEVEMENT', id: check.id });
         const ach = getAchievementById(check.id);
         if (ach) {

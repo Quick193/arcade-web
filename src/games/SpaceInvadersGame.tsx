@@ -7,6 +7,7 @@ import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
 import { useGameLoop } from '../hooks/useGameLoop';
 import { useMobileCanvasSize } from '../hooks/useMobileCanvasSize';
+import { useSfx } from '../hooks/useSfx';
 
 const W = 320;
 const H = 480;
@@ -160,6 +161,9 @@ export function SpaceInvadersGame() {
   const [phase, setPhase] = useState<'ready' | 'playing' | 'gameover'>('ready');
   const canvasSize = useMobileCanvasSize({ width: W, height: H, reservedVerticalSpace: 315 });
   const best = bestScore('spaceinvaders');
+  const sfx = useSfx();
+  const sfxRef = useRef(sfx);
+  sfxRef.current = sfx;
 
   useEffect(() => {
     aiEnabledRef.current = aiDemoMode;
@@ -194,6 +198,7 @@ export function SpaceInvadersGame() {
     gs.lastPlayerShot = now;
     recordPlayerAction('shoot', { aggression: 0.7, precision: 0.6 });
     gs.playerBullets.push({ x: gs.playerX + 14, y: H - 45, vy: -8 });
+    sfxRef.current('shoot');
   }, [recordPlayerAction, startRun]);
 
   const finishRun = useCallback((gs: GS) => {
@@ -395,6 +400,7 @@ export function SpaceInvadersGame() {
         for (const invader of alive) {
           if (pb.x > invader.x && pb.x < invader.x + INVADER_W && pb.y < invader.y + INVADER_H && pb.y > invader.y) {
             invader.alive = false;
+            sfxRef.current('enemyDie');
             gs.score += INVADER_SCORES[invader.type];
             gs.playerBullets.splice(bi, 1);
             for (let index = 0; index < 5; index += 1) gs.particles.push({ x: invader.x + INVADER_W / 2, y: invader.y + INVADER_H / 2, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, life: 30, color: '#ff0' });
@@ -472,6 +478,7 @@ export function SpaceInvadersGame() {
         if (hitShield) continue;
         if (bullet.x > gs.playerX && bullet.x < gs.playerX + 28 && bullet.y > H - 55 && bullet.y < H - 42) {
           gs.lives -= 1;
+          sfxRef.current('die');
           gs.enemyBullets.splice(index, 1);
           if (gs.lives <= 0) finishRun(gs);
           continue;

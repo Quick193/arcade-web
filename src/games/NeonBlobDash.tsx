@@ -6,6 +6,7 @@ import { MobileControlBar } from '../components/MobileControlBar';
 import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
 import { useGameLoop } from '../hooks/useGameLoop';
+import { useSfx } from '../hooks/useSfx';
 import { useMobileCanvasSize } from '../hooks/useMobileCanvasSize';
 
 const W = 480;
@@ -70,6 +71,7 @@ function initGs(): GS {
 
 export function NeonBlobDash() {
   const { recordGame, checkAchievements, bestScore, navigate } = useApp();
+  const sfx = useSfx();
   const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('neonblob');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -104,6 +106,7 @@ export function NeonBlobDash() {
       setPhase('playing');
     }
     if (gs.onGround) {
+      sfx('jump');
       recordPlayerAction('jump', { aggression: 0.6, risk: 0.52, tempo: 0.6 });
       gs.blobVY = JUMP_POWER;
       gs.onGround = false;
@@ -122,6 +125,7 @@ export function NeonBlobDash() {
   }, [recordPlayerAction]);
 
   const die = useCallback((gs: GS) => {
+    sfx('die');
     gs.alive = false;
     for (let index = 0; index < 20; index += 1) {
       gs.particles.push({ x: BLOB_X, y: gs.blobY, vx: (Math.random() - 0.5) * 10, vy: -Math.random() * 8, color: `hsl(${Math.random() * 60 + 160}, 100%, 60%)`, life: 1, size: 5 });

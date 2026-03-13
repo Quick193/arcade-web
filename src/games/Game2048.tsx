@@ -274,6 +274,20 @@ export function Game2048() {
     if (aiDemoMode) setGs(g => ({ ...g, aiDisabled: false }));
   }, [aiDemoMode]);
 
+  // Responsive tile size: fill viewport width with some padding, clamp 60–90px
+  const [tileSize, setTileSize] = useState(() => {
+    const avail = Math.min(window.innerWidth - 40, 380);
+    return Math.max(60, Math.min(90, Math.floor((avail - 40) / 4)));
+  });
+  useEffect(() => {
+    const onResize = () => {
+      const avail = Math.min(window.innerWidth - 40, 380);
+      setTileSize(Math.max(60, Math.min(90, Math.floor((avail - 40) / 4))));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const { onTouchStart, onTouchEnd } = useSwipe({
     onSwipe: (dir) => {
       recordPlayerAction(`move:${dir}`, {
@@ -302,12 +316,12 @@ export function Game2048() {
           <button onClick={undo} disabled={!gs.history.length}
             style={{ padding: '4px 12px', background: '#8f7a66', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Undo</button>
         </div>
-        <div style={{ background: '#bbada0', padding: 8, borderRadius: 8, display: 'grid', gridTemplateColumns: 'repeat(4, 80px)', gap: 8 }}>
+        <div style={{ background: '#bbada0', padding: 8, borderRadius: 8, display: 'grid', gridTemplateColumns: `repeat(4, ${tileSize}px)`, gap: 8 }}>
           {gs.grid.map((row, r) => row.map((val, c) => {
             const colors = TILE_COLORS[val] || { bg: '#3c3a32', fg: '#f9f6f2' };
-            const fontSize = val >= 1024 ? 20 : val >= 128 ? 24 : 32;
+            const fontSize = val >= 1024 ? Math.round(tileSize * 0.25) : val >= 128 ? Math.round(tileSize * 0.3) : Math.round(tileSize * 0.4);
             return (
-              <div key={`${r}${c}`} style={{ width: 80, height: 80, background: colors.bg, color: colors.fg, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, fontSize, fontWeight: 'bold', fontFamily: 'sans-serif', transition: 'background 0.12s' }}>
+              <div key={`${r}${c}`} style={{ width: tileSize, height: tileSize, background: colors.bg, color: colors.fg, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, fontSize, fontWeight: 'bold', fontFamily: 'sans-serif', transition: 'background 0.12s' }}>
                 {val !== 0 ? val : ''}
               </div>
             );

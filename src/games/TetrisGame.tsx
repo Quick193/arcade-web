@@ -5,6 +5,7 @@ import { MobileControlBar } from '../components/MobileControlBar';
 import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
 import { GamePausedContext } from '../contexts/GamePausedContext';
+import { useSfx } from '../hooks/useSfx';
 
 const COLS = 10;
 const ROWS = 20;
@@ -279,6 +280,9 @@ export function TetrisGame() {
   const isHubPaused = useContext(GamePausedContext);
   const isHubPausedRef = useRef(false);
   isHubPausedRef.current = isHubPaused;
+  const sfx = useSfx();
+  const sfxRef = useRef(sfx);
+  sfxRef.current = sfx;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gsRef = useRef<GameState | null>(null);
   const rafRef = useRef<number>(0);
@@ -369,10 +373,17 @@ export function TetrisGame() {
     const difficult = lines === 4 || (tspin && lines > 0);
     if (difficult && gs.b2b) pts = Math.floor(pts * 1.5);
     gs.b2b = difficult;
-    if (lines > 0) { gs.combo++; pts += 50 * gs.combo * gs.level; } else gs.combo = -1;
+    if (lines > 0) {
+      gs.combo++;
+      pts += 50 * gs.combo * gs.level;
+      if (lines === 4) sfxRef.current('tetris');
+      else sfxRef.current('lineClear');
+    } else {
+      gs.combo = -1;
+    }
     gs.score += pts;
     const newLevel = Math.floor(gs.lines / 10) + 1;
-    if (newLevel > gs.level) gs.level = newLevel;
+    if (newLevel > gs.level) { gs.level = newLevel; sfxRef.current('levelUp'); }
     if (gs.linesLeft !== null && gs.linesLeft <= 0) {
       gs.gameOver = true;
       const dur = (Date.now() - gs.startTime) / 1000;

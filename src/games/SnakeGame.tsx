@@ -6,6 +6,8 @@ import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
 import { useMobileCanvasSize } from '../hooks/useMobileCanvasSize';
 import { GamePausedContext } from '../contexts/GamePausedContext';
+import { useSfx } from '../hooks/useSfx';
+import { hapticLight } from '../utils/haptics';
 
 const GRID = 20;
 const CELL = 16;
@@ -128,6 +130,10 @@ export function SnakeGame() {
   const isHubPausedRef = useRef(false);
   isHubPausedRef.current = isHubPaused;
 
+  const sfx = useSfx();
+  const sfxRef = useRef(sfx);
+  sfxRef.current = sfx;
+
   const aiDemoRef = useRef(aiDemoMode);
   aiDemoRef.current = aiDemoMode;
   const aiOnRef = useRef(aiDemoMode);
@@ -178,6 +184,7 @@ export function SnakeGame() {
       const hitSelf = gs.snake.slice(1).some(p => p.x === nx && p.y === ny);
 
       if ((hitBorder || hitObstacle || hitSelf) && !gs.invincible) {
+        sfxRef.current('die');
         gs.lives--;
         if (gs.lives <= 0) {
           gs.gameOver = true;
@@ -199,6 +206,8 @@ export function SnakeGame() {
       gs.snake.unshift(newHead);
       const ateFood = nx === gs.food.x && ny === gs.food.y;
       if (ateFood) {
+        hapticLight();
+        sfxRef.current('eatFood');
         const pts = 10 * gs.level * (gs.doubleScore ? 2 : 1);
         gs.score += pts;
         gs.foodCount++;
@@ -505,13 +514,14 @@ export function SnakeGame() {
       onRestart={initGame}
       controls={(
         <MobileControlBar
+          layout="dpad"
           items={[
             { id: 'up',    label: '▲', onPress: () => steer('U') },
             { id: 'left',  label: '◀', onPress: () => steer('L') },
             { id: 'down',  label: '▼', onPress: () => steer('D') },
             { id: 'right', label: '▶', onPress: () => steer('R') },
           ]}
-          hint="Swipe the canvas or tap the buttons to steer"
+          hint="Swipe the canvas or use the D-pad to steer"
         />
       )}
     >

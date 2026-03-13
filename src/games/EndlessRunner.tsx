@@ -7,6 +7,7 @@ import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
 import { useGameLoop } from '../hooks/useGameLoop';
 import { useMobileCanvasSize } from '../hooks/useMobileCanvasSize';
+import { useSfx } from '../hooks/useSfx';
 
 const W = 480;
 const H = 320;
@@ -163,6 +164,9 @@ export function EndlessRunner() {
   const [phase, setPhase] = useState<'ready' | 'playing' | 'gameover'>('ready');
   const canvasSize = useMobileCanvasSize({ width: W, height: H, reservedVerticalSpace: 310 });
   const best = bestScore('runner');
+  const sfx = useSfx();
+  const sfxRef = useRef(sfx);
+  sfxRef.current = sfx;
 
   useEffect(() => {
     aiEnabledRef.current = aiDemoMode;
@@ -241,6 +245,7 @@ export function EndlessRunner() {
     gs.invincTimer = 2.0;
     gs.stompChain = 0;
     if (gs.lives <= 0) {
+      sfxRef.current('die');
       for (let index = 0; index < 20; index += 1) {
         gs.particles.push({ x: gs.playerX + gs.worldX + PLAYER_W / 2, y: gs.playerY, vx: (Math.random() - 0.5) * 10, vy: -Math.random() * 8, color: '#ff4444', life: 1, size: 5 });
       }
@@ -540,6 +545,7 @@ export function EndlessRunner() {
       if (gs.jumpQueued && canJump) {
         gs.playerVY = jumpPower;
         gs.onGround = false; gs.coyoteTimer = 0; gs.jumpHeldTime = 0;
+        sfxRef.current('jump');
         for (let index = 0; index < 6; index += 1) {
           gs.particles.push({ x: gs.playerX + gs.worldX, y: gs.playerY + PLAYER_H, vx: (Math.random() - 0.5) * 4, vy: Math.random() * 2, color: '#88aaff', life: 0.4, size: 4 });
         }
