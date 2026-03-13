@@ -46,7 +46,7 @@ function makeBall(dx = 1): Ball {
 }
 
 export function PongGame() {
-  const { recordGame, checkAchievements } = useApp();
+  const { recordGame } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, mode: demoMode, cycleMode, getTraitValue, recordPlayerAction } = useAIDemo('pong');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gsRef = useRef<GS | null>(null);
@@ -155,8 +155,7 @@ export function PongGame() {
             gs.gameOver = true;
             gs.winner = gs.p1Sets >= 2 ? 'P1' : 'P2';
             const dur = (Date.now() - gs.startTime) / 1000;
-            recordGame('pong', gs.p1Sets >= 2, gs.p1Score, dur);
-            checkAchievements('pong', { won: gs.p1Sets >= 2, aiScore: gs.p2Score });
+            recordGame('pong', gs.p1Sets >= 2, gs.p1Score, dur, { won: gs.p1Sets >= 2, aiScore: gs.p2Score });
             setGameOverState(true);
           } else {
             gs.p1Score = 0; gs.p2Score = 0;
@@ -167,8 +166,7 @@ export function PongGame() {
           gs.winner = gs.p1Score >= SCORE_WIN ? 'P1' : 'AI';
           const dur = (Date.now() - gs.startTime) / 1000;
           const won = gs.p1Score >= SCORE_WIN;
-          recordGame('pong', won, gs.p1Score, dur);
-          checkAchievements('pong', { won, aiScore: gs.p2Score });
+          recordGame('pong', won, gs.p1Score, dur, { won, aiScore: gs.p2Score });
           setGameOverState(true);
         }
       }
@@ -427,7 +425,7 @@ export function PongGame() {
       window.removeEventListener('keyup', onKeyUp);
       canvas.removeEventListener('touchmove', onTouchMove);
     };
-  }, [mode, initGame, recordGame, checkAchievements]);
+  }, [mode, initGame, recordGame]);
 
   useEffect(() => {
     const gs = gsRef.current;

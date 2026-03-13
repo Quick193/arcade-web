@@ -275,7 +275,7 @@ interface GameState {
 }
 
 export function TetrisGame() {
-  const { recordGame, checkAchievements, bestScore, navigate, state } = useApp();
+  const { recordGame, bestScore, navigate, state } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, mode: demoMode, cycleMode, getActionWeight, recordPlayerAction } = useAIDemo('tetris');
   const isHubPaused = useContext(GamePausedContext);
   const isHubPausedRef = useRef(false);
@@ -327,10 +327,9 @@ export function TetrisGame() {
     if (!fits(gs.grid, gs.piece)) {
       gs.gameOver = true;
       const dur = (Date.now() - gs.startTime) / 1000;
-      recordGame('tetris', false, gs.score, dur);
-      checkAchievements('tetris', { score: gs.score });
+      recordGame('tetris', false, gs.score, dur, { score: gs.score });
     }
-  }, [recordGame, checkAchievements]);
+  }, [recordGame]);
 
   const tryMoveFn = useCallback((dx: number, dy: number): boolean => {
     const gs = gsRef.current;
@@ -389,12 +388,11 @@ export function TetrisGame() {
     if (gs.linesLeft !== null && gs.linesLeft <= 0) {
       gs.gameOver = true;
       const dur = (Date.now() - gs.startTime) / 1000;
-      recordGame('tetris', true, gs.score, dur);
-      checkAchievements('tetris', { score: gs.score, won: true });
+      recordGame('tetris', true, gs.score, dur, { score: gs.score, won: true });
       return;
     }
     spawnNext();
-  }, [spawnNext, recordGame, checkAchievements]);
+  }, [spawnNext, recordGame]);
 
   const hardDropFn = useCallback(() => {
     const gs = gsRef.current;
@@ -603,8 +601,7 @@ export function TetrisGame() {
           if (gs.timeLeft <= 0) {
             gs.gameOver = true;
             const dur = (Date.now() - gs.startTime) / 1000;
-            recordGame('tetris', false, gs.score, dur);
-            checkAchievements('tetris', { score: gs.score });
+            recordGame('tetris', false, gs.score, dur, { score: gs.score });
           }
         }
         if (aiOnRef.current) {

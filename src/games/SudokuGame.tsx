@@ -213,7 +213,7 @@ interface GS {
 }
 
 export function SudokuGame() {
-  const { recordGame, checkAchievements, bestScore } = useApp();
+  const { recordGame, bestScore } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, mode: demoMode, cycleMode, getAdaptiveDelay, getActionWeight, recordPlayerAction } = useAIDemo('sudoku');
   const aiDemoRef = useRef(aiDemoMode);
 
@@ -293,13 +293,12 @@ export function SudokuGame() {
       if (won) {
         const dur = (Date.now() - prev.startTime) / 1000;
         const score = Math.max(0, 1000 - mistakes * 50 - Math.floor(dur));
-        recordGame('sudoku', true, score, dur);
-        checkAchievements('sudoku', { mistakes, difficulty: DIFFICULTIES[diffIdx].label, time: dur });
+        recordGame('sudoku', true, score, dur, { won: true, mistakes, difficulty: DIFFICULTIES[diffIdx].label, time: dur });
         if (timerRef.current) clearInterval(timerRef.current);
       }
       return { ...prev, grid: newGrid, notes: newNotes, mistakes, won };
     });
-  }, [checkAchievements, diffIdx, recordGame, recordPlayerAction]);
+  }, [diffIdx, recordGame, recordPlayerAction]);
 
   const hint = useCallback(() => {
     setGs(prev => {

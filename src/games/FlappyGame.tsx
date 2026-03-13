@@ -63,7 +63,7 @@ function createGameState(): GS {
 }
 
 export function FlappyGame() {
-  const { recordGame, checkAchievements, bestScore, navigate } = useApp();
+  const { recordGame, bestScore, navigate } = useApp();
   const { isEnabled: aiDemoMode, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('flappy');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -103,11 +103,10 @@ export function FlappyGame() {
     if (gs.gameState === 'dead') return;
     gs.gameState = 'dead';
     const duration = (Date.now() - gs.startTime) / 1000;
-    recordGame('flappy', false, gs.score, duration);
-    checkAchievements('flappy', { score: gs.score, duration });
+    recordGame('flappy', false, gs.score, duration, { score: gs.score, duration });
     setPhase('gameover');
     setDisplayScore(gs.score);
-  }, [checkAchievements, recordGame]);
+  }, [recordGame]);
 
   const handleManualFlap = useCallback(() => {
     if (phase === 'gameover') return;

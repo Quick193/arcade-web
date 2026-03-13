@@ -70,7 +70,7 @@ function initGs(): GS {
 }
 
 export function NeonBlobDash() {
-  const { recordGame, checkAchievements, bestScore, navigate, state } = useApp();
+  const { recordGame, bestScore, navigate, state } = useApp();
   const sfx = useSfx();
   const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('neonblob');
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -136,11 +136,10 @@ export function NeonBlobDash() {
         gs.particles.push({ x: BLOB_X, y: gs.blobY, vx: (Math.random() - 0.5) * 10, vy: -Math.random() * 8, color: `hsl(${Math.random() * 60 + 160}, 100%, 60%)`, life: 1, size: 5 });
       }
     }
-    recordGame('neonblob', false, gs.score * 10, gs.frame / 60);
-    checkAchievements('neonblob', { score: gs.score });
+    recordGame('neonblob', false, gs.score * 10, gs.frame / 60, { score: gs.score });
     setPhase('gameover');
     setDisplayScore(gs.score * 10);
-  }, [checkAchievements, recordGame]);
+  }, [recordGame]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

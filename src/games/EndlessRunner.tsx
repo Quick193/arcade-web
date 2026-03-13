@@ -153,7 +153,7 @@ function rectsOverlap(a: { x: number; y: number; w: number; h: number }, b: { x:
 }
 
 export function EndlessRunner() {
-  const { recordGame, checkAchievements, bestScore, navigate, state } = useApp();
+  const { recordGame, bestScore, navigate, state } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('runner');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -230,11 +230,10 @@ export function EndlessRunner() {
   const finishRun = useCallback((gs: GS) => {
     if (!gs.alive) return;
     gs.alive = false;
-    recordGame('runner', false, gs.score, gs.frame / 60);
-    checkAchievements('runner', { score: gs.score, duration: gs.frame / 60 });
+    recordGame('runner', false, gs.score, gs.frame / 60, { score: gs.score, duration: gs.frame / 60 });
     setPhase('gameover');
     setDisplayScore(gs.score);
-  }, [checkAchievements, recordGame]);
+  }, [recordGame]);
 
   const takeDamage = useCallback((gs: GS) => {
     if (gs.invincTimer > 0) return;

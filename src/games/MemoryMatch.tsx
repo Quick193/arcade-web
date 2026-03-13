@@ -52,7 +52,7 @@ interface GS {
 }
 
 export function MemoryMatch() {
-  const { recordGame, checkAchievements, bestScore } = useApp();
+  const { recordGame, bestScore } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, mode: demoMode, cycleMode, getAdaptiveDelay, getActionWeight, recordPlayerAction } = useAIDemo('memory');
   const aiDemoRef = useRef(aiDemoMode);
   const aiOnRef = useRef(aiDemoMode);
@@ -124,8 +124,7 @@ export function MemoryMatch() {
           setTimeout(() => {
             setGs(g => g ? { ...g, won: true } : g);
           }, 300);
-          recordGame('memory', true, score, dur);
-          checkAchievements('memory', { matches: newMatches, mismatches: prev.mismatches, time: dur });
+          recordGame('memory', true, score, dur, { won: true, errors: prev.mismatches, matches: newMatches, time: dur });
         }
         return { ...prev, cards: matchedCards, flipped: [], matches: newMatches, attempts: newAttempts, seen: newSeen };
       } else {
@@ -141,7 +140,7 @@ export function MemoryMatch() {
         return { ...prev, cards: newCards, flipped: [], attempts: newAttempts, mismatches: newMismatches, blocking: true, seen: newSeen };
       }
     });
-  }, [checkAchievements, recordGame, recordPlayerAction]);
+  }, [recordGame, recordPlayerAction]);
 
   // Keep ref in sync so AI effect doesn't need flipCard as a dep
   flipCardRef.current = flipCard;

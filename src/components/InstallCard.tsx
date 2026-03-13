@@ -17,6 +17,11 @@ function isIosSafari() {
   return isIos && isWebKit && !isCriOS;
 }
 
+/**
+ * Floating install banner — fixed to the bottom of the viewport so it
+ * never interrupts the game grid. Uses safe-area-inset-bottom so it clears
+ * the home indicator on iPhones.
+ */
 export function InstallCard() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -44,55 +49,91 @@ export function InstallCard() {
   }, []);
 
   if (standalone || dismissed) return null;
+  if (!deferredPrompt && !isIosSafari()) return null;
 
-  if (deferredPrompt) {
-    return (
-      <div className="card install-card p-3 mb-3">
-        <div className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Install Arcade Hub</div>
-        <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-          Add it to your home screen for a full-screen app shell, offline cache, and faster relaunches.
+  const isIos = !deferredPrompt && isIosSafari();
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        left: 12,
+        right: 12,
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 68px)',
+        zIndex: 60,
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--card-border)',
+        borderRadius: 14,
+        boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '10px 12px',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+      }}
+    >
+      {/* Icon */}
+      <span style={{ fontSize: 22, flexShrink: 0 }}>📲</span>
+
+      {/* Text */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+          {isIos ? 'Add to iPhone' : 'Install Arcade Hub'}
         </div>
-        <div className="flex gap-2 mt-3">
-          <button
-            className="pressable px-3 py-2 rounded-lg text-xs font-semibold"
-            style={{ background: 'var(--accent-blue)', color: '#fff' }}
-            onClick={async () => {
-              await deferredPrompt.prompt();
-              await deferredPrompt.userChoice.catch(() => undefined);
-              setDeferredPrompt(null);
-            }}
-          >
-            Install
-          </button>
-          <button
-            className="pressable px-3 py-2 rounded-lg text-xs font-semibold"
-            style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--card-border)' }}
-            onClick={() => setDismissed(true)}
-          >
-            Not now
-          </button>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {isIos
+            ? 'Tap Share → Add to Home Screen'
+            : 'Full-screen, offline, faster'}
         </div>
       </div>
-    );
-  }
 
-  if (isIosSafari()) {
-    return (
-      <div className="card install-card p-3 mb-3">
-        <div className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Add To iPhone</div>
-        <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-          In Safari, tap Share and then Add to Home Screen to install the app on your iPhone.
-        </div>
+      {/* Install / action button */}
+      {!isIos && (
         <button
-          className="pressable px-3 py-2 rounded-lg text-xs font-semibold mt-3"
-          style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--card-border)' }}
-          onClick={() => setDismissed(true)}
+          style={{
+            flexShrink: 0,
+            padding: '6px 14px',
+            borderRadius: 8,
+            background: 'var(--accent-blue)',
+            color: '#fff',
+            fontSize: 12,
+            fontWeight: 700,
+            border: 'none',
+            cursor: 'pointer',
+          }}
+          onClick={async () => {
+            if (!deferredPrompt) return;
+            await deferredPrompt.prompt();
+            await deferredPrompt.userChoice.catch(() => undefined);
+            setDeferredPrompt(null);
+          }}
         >
-          Hide
+          Install
         </button>
-      </div>
-    );
-  }
+      )}
 
-  return null;
+      {/* Dismiss */}
+      <button
+        aria-label="Dismiss install banner"
+        style={{
+          flexShrink: 0,
+          width: 28,
+          height: 28,
+          borderRadius: '50%',
+          background: 'var(--bg-primary)',
+          border: '1px solid var(--card-border)',
+          color: 'var(--text-muted)',
+          fontSize: 14,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+        onClick={() => setDismissed(true)}
+      >
+        ✕
+      </button>
+    </div>
+  );
 }

@@ -198,7 +198,7 @@ interface GS {
 }
 
 export function Connect4Game() {
-  const { recordGame, checkAchievements, bestScore } = useApp();
+  const { recordGame, bestScore } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, getAdaptiveDelay, getActionWeight, recordPlayerAction } = useAIDemo('connect4');
   const aiDemoRef = useRef(aiDemoMode);
   aiDemoRef.current = aiDemoMode;
@@ -237,8 +237,7 @@ export function Connect4Game() {
       const newHistory = [...prev.history, prev.board];
       if (winCells || draw) {
         const dur = (Date.now() - startTimeRef.current) / 1000;
-        recordGame('connect4', !!winCells && p === 1, newScore[0], dur);
-        checkAchievements('connect4', { winner: p, score: newScore[0] });
+        recordGame('connect4', !!winCells && p === 1, newScore[0], dur, { winner: p, score: newScore[0], won: !!winCells && p === 1 });
       }
       if (player === undefined && p === 1) {
         recordPlayerAction(`col:${col}`, {
@@ -250,7 +249,7 @@ export function Connect4Game() {
       }
       return { ...prev, board: nb, turn: p === 1 ? 2 : 1, winner: winCells ? p : null, winCells: winCells || null, draw, score: newScore, history: newHistory, aiThinking: !winCells && !draw && mode === '1p' && p === 1 };
     });
-  }, [checkAchievements, mode, recordGame, recordPlayerAction]);
+  }, [mode, recordGame, recordPlayerAction]);
 
   const undo = useCallback(() => {
     setGs(prev => {

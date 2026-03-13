@@ -150,7 +150,7 @@ function createState(wave = 1): GS {
 }
 
 export function SpaceInvadersGame() {
-  const { recordGame, checkAchievements, bestScore, navigate, state } = useApp();
+  const { recordGame, bestScore, navigate, state } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('spaceinvaders');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -207,11 +207,10 @@ export function SpaceInvadersGame() {
     if (gs.gameOver) return;
     gs.gameOver = true;
     const duration = (Date.now() - gs.startTime) / 1000;
-    recordGame('spaceinvaders', false, gs.score, duration);
-    checkAchievements('spaceinvaders', { score: gs.score, wave: gs.wave, duration });
+    recordGame('spaceinvaders', false, gs.score, duration, { score: gs.score, wave: gs.wave, duration });
     setPhase('gameover');
     setDisplayScore(gs.score);
-  }, [checkAchievements, recordGame]);
+  }, [recordGame]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

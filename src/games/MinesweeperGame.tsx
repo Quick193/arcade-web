@@ -159,7 +159,7 @@ function aiSolve(gs: GS): { action: 'reveal' | 'flag'; r: number; c: number } | 
 }
 
 export function MinesweeperGame() {
-  const { recordGame, checkAchievements } = useApp();
+  const { recordGame } = useApp();
   const { isEnabled: aiDemoMode, getAdaptiveDelay, recordPlayerAction } = useAIDemo('minesweeper');
   const aiDemoRef = useRef(aiDemoMode);
   aiDemoRef.current = aiDemoMode;
@@ -211,16 +211,14 @@ export function MinesweeperGame() {
             if (lost) {
               const b2 = prev.board.map(row => row.map(c2 => c2.mine ? { ...c2, state: 'revealed' as CellState } : { ...c2 }));
               const dur = (Date.now() - startTimeRef.current) / 1000;
-              recordGame('minesweeper', false, prev.score, dur);
-              checkAchievements('minesweeper', { score: prev.score });
+              recordGame('minesweeper', false, prev.score, dur, { score: prev.score });
               return { ...prev, board: b2, gameState: 'lost' };
             }
             const won = b.every(row => row.every(c2 => c2.mine || c2.state === 'revealed'));
             if (won) {
               const dur = (Date.now() - startTimeRef.current) / 1000;
               const sc = prev.board.flat().filter(c2 => !c2.mine).length * 10 + Math.max(0, 300 - prev.time * 2);
-              recordGame('minesweeper', true, sc, dur);
-              checkAchievements('minesweeper', { score: sc, won: true, difficulty: prev.difficulty });
+              recordGame('minesweeper', true, sc, dur, { score: sc, won: true, difficulty: prev.difficulty });
               return { ...prev, board: b, gameState: 'won', score: sc };
             }
             return { ...prev, board: b };
@@ -240,8 +238,7 @@ export function MinesweeperGame() {
       if (newBoard[r][c].mine) {
         const b2 = newBoard.map(row => row.map(c2 => c2.mine ? { ...c2, state: 'revealed' as CellState } : { ...c2 }));
         const dur = (Date.now() - startTimeRef.current) / 1000;
-        recordGame('minesweeper', false, prev.score, dur);
-        checkAchievements('minesweeper', { score: prev.score });
+        recordGame('minesweeper', false, prev.score, dur, { score: prev.score });
         return { ...prev, board: b2, gameState: 'lost', firstClick };
       }
       const b3 = floodReveal(newBoard, prev.rows, prev.cols, r, c);
@@ -249,13 +246,12 @@ export function MinesweeperGame() {
       if (won) {
         const dur = (Date.now() - startTimeRef.current) / 1000;
         const sc = b3.flat().filter(c2 => !c2.mine).length * 10 + Math.max(0, 300 - prev.time * 2);
-        recordGame('minesweeper', true, sc, dur);
-        checkAchievements('minesweeper', { score: sc, won: true, difficulty: prev.difficulty });
+        recordGame('minesweeper', true, sc, dur, { score: sc, won: true, difficulty: prev.difficulty });
         return { ...prev, board: b3, gameState: 'won', firstClick, score: sc };
       }
       return { ...prev, board: b3, gameState: state2, firstClick };
     });
-  }, [checkAchievements, recordGame, recordPlayerAction]);
+  }, [recordGame, recordPlayerAction]);
 
   const flag = useCallback((r: number, c: number) => {
     recordPlayerAction(`flag:${r},${c}`, {

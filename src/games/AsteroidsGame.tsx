@@ -184,7 +184,7 @@ function aiControl(
 }
 
 export function AsteroidsGame() {
-  const { recordGame, checkAchievements, bestScore, navigate, state } = useApp();
+  const { recordGame, bestScore, navigate, state } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('asteroids');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -239,11 +239,10 @@ export function AsteroidsGame() {
     gs.gameOver = true;
     gs.ship.alive = false;
     const duration = (Date.now() - startTimeRef.current) / 1000;
-    recordGame('asteroids', false, gs.score, duration);
-    checkAchievements('asteroids', { score: gs.score, wave: gs.wave, duration });
+    recordGame('asteroids', false, gs.score, duration, { score: gs.score, wave: gs.wave, duration });
     setPhase('gameover');
     setScore(gs.score);
-  }, [checkAchievements, recordGame]);
+  }, [recordGame]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

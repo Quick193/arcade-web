@@ -191,7 +191,7 @@ interface GS {
 }
 
 export function Game2048() {
-  const { recordGame, checkAchievements, bestScore } = useApp();
+  const { recordGame, bestScore } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, getAdaptiveDelay, getActionWeight, recordPlayerAction } = useAIDemo('game2048');
   const aiDemoRef = useRef(aiDemoMode);
   aiDemoRef.current = aiDemoMode;
@@ -219,12 +219,11 @@ export function Game2048() {
       const newHistory = [...prev.history.slice(-4), { grid: prev.grid, score: prev.score }];
       if (gameOver) {
         const dur = (Date.now() - startTimeRef.current) / 1000;
-        recordGame('game2048', false, newScore, dur);
-        checkAchievements('game2048', { score: newScore, maxTile });
+        recordGame('game2048', false, newScore, dur, { score: newScore, maxTile });
       }
       return { ...prev, grid: withTile, score: newScore, won, gameOver, history: newHistory, mergeAnim: new Set() };
     });
-  }, [recordGame, checkAchievements]);
+  }, [recordGame]);
 
   const undo = useCallback(() => {
     setGs(prev => {

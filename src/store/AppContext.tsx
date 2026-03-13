@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react';
 import type {
   AppState,
   MountedGame,
@@ -104,7 +104,7 @@ type Action =
   | { type: 'SWITCH_PROFILE'; id: string }
   | { type: 'DELETE_PROFILE'; id: string }
   | { type: 'TOGGLE_FAVORITE_GAME'; gameId: string }
-  | { type: 'RECORD_GAME'; gameId: string; won: boolean; score: number; duration: number }
+  | { type: 'RECORD_GAME'; gameId: string; won: boolean; score: number; duration: number; context?: Record<string, unknown> }
   | { type: 'UNLOCK_ACHIEVEMENT'; id: string }
   | { type: 'ADD_TOAST'; toast: Toast }
   | { type: 'REMOVE_TOAST'; id: string }
@@ -133,6 +133,102 @@ function normalizeProfile(profile: Profile): Profile {
     lastIncompleteGameId: profile.lastIncompleteGameId ?? null,
     hiddenFromRecents: profile.hiddenFromRecents ?? [],
   };
+}
+
+/**
+ * Pure helper — called inside the RECORD_GAME reducer case with the
+ * already-updated profile (stats are post-update).  Returns the new
+ * achievement entries to add and the toast notifications to emit.
+ * Side-effects (haptics, setTimeout) are handled in a separate useEffect.
+ */
+function deriveNewAchievements(
+  profile: Profile,
+  gameId: string,
+  context: Record<string, unknown>,
+): { unlocked: Array<{ id: string; unlockedAt: string }>; toasts: Toast[] } {
+  const already = new Set(profile.unlockedAchievements.map(a => a.id));
+  const gs = profile.globalStats; // already post-update
+  const gp = profile.stats[gameId]?.gamesPlayed ?? 0; // already post-update
+
+  const checks: Array<{ id: string; condition: () => boolean }> = [
+    { id: 'first_game', condition: () => gs.totalGames >= 1 },
+    { id: 'first_win', condition: () => context.won === true },
+    { id: 'played_5', condition: () => gs.totalGames >= 5 },
+    { id: 'played_25', condition: () => gs.totalGames >= 25 },
+    { id: 'played_50', condition: () => gs.totalGames >= 50 },
+    { id: 'played_100', condition: () => gs.totalGames >= 100 },
+    { id: 'playtime_1h', condition: () => gs.globalPlaytime >= 3600 },
+    { id: 'playtime_5h', condition: () => gs.globalPlaytime >= 18000 },
+    { id: 'playtime_10h', condition: () => gs.globalPlaytime >= 36000 },
+    // per-game
+    { id: `${gameId}_first`, condition: () => gp === 1 },
+    { id: `${gameId}_win`, condition: () => context.won === true },
+    // snake
+    { id: 'snake_100', condition: () => gameId === 'snake' && (context.score as number) >= 100 },
+    { id: 'snake_500', condition: () => gameId === 'snake' && (context.score as number) >= 500 },
+    // tetris
+    { id: 'tetris_1000', condition: () => gameId === 'tetris' && (context.score as number) >= 1000 },
+    { id: 'tetris_10000', condition: () => gameId === 'tetris' && (context.score as number) >= 10000 },
+    { id: 'tetris_tetris', condition: () => gameId === 'tetris' && (context.tetris as boolean) === true },
+    // 2048
+    { id: '2048_1024', condition: () => gameId === 'game2048' && (context.maxTile as number) >= 1024 },
+    { id: '2048_2048', condition: () => gameId === 'game2048' && (context.maxTile as number) >= 2048 },
+    // memory
+    { id: 'memory_perfect', condition: () => gameId === 'memory' && context.won === true && (context.errors as number) === 0 },
+    // pong
+    { id: 'pong_shutout', condition: () => gameId === 'pong' && context.won === true && (context.aiScore as number) === 0 },
+    // flappy
+    { id: 'flappy_10', condition: () => gameId === 'flappy' && (context.score as number) >= 10 },
+    { id: 'flappy_50', condition: () => gameId === 'flappy' && (context.score as number) >= 50 },
+    // space invaders
+    { id: 'space_wave3', condition: () => gameId === 'spaceinvaders' && (context.wave as number) >= 3 },
+    { id: 'space_1000', condition: () => gameId === 'spaceinvaders' && (context.score as number) >= 1000 },
+    // asteroids
+    { id: 'asteroids_1000', condition: () => gameId === 'asteroids' && (context.score as number) >= 1000 },
+    { id: 'asteroids_5000', condition: () => gameId === 'asteroids' && (context.score as number) >= 5000 },
+    // endless runner
+    { id: 'runner_500', condition: () => gameId === 'runner' && (context.score as number) >= 500 },
+    { id: 'runner_2000', condition: () => gameId === 'runner' && (context.score as number) >= 2000 },
+    // neon blob dash
+    { id: 'neon_1000', condition: () => gameId === 'neonblob' && (context.score as number) >= 1000 },
+    { id: 'neon_5000', condition: () => gameId === 'neonblob' && (context.score as number) >= 5000 },
+    // sudoku
+    { id: 'sudoku_hard', condition: () => gameId === 'sudoku' && context.won === true && context.difficulty === 'hard' },
+    // explorer
+    {
+      id: 'played_5_games',
+      condition: () => Object.values(profile.stats).filter(s => (s?.gamesPlayed ?? 0) > 0).length >= 5,
+    },
+    {
+      id: 'played_all_games',
+      condition: () => Object.values(profile.stats).filter(s => (s?.gamesPlayed ?? 0) > 0).length >= 15,
+    },
+  ];
+
+  const seenIds = new Set(already);
+  const unlocked: Array<{ id: string; unlockedAt: string }> = [];
+  const toasts: Toast[] = [];
+  const now = new Date().toISOString();
+
+  for (const check of checks) {
+    if (!seenIds.has(check.id) && ACHIEVEMENTS.find(a => a.id === check.id) && check.condition()) {
+      seenIds.add(check.id);
+      unlocked.push({ id: check.id, unlockedAt: now });
+      const ach = getAchievementById(check.id);
+      if (ach) {
+        toasts.push({
+          id: `ach_${check.id}_${Date.now()}`,
+          type: 'achievement',
+          title: 'Achievement Unlocked!',
+          message: ach.name,
+          icon: ach.icon,
+          color: ach.color,
+        });
+      }
+    }
+  }
+
+  return { unlocked, toasts };
 }
 
 function reducer(state: AppState, action: Action): AppState {
@@ -279,36 +375,48 @@ function reducer(state: AppState, action: Action): AppState {
       });
 
     case 'RECORD_GAME': {
-      return updateActiveProfile(state, profile => {
-        const prev = profile.stats[action.gameId] ?? { ...DEFAULT_STATS };
-        const newStreak = action.won ? prev.currentStreak + 1 : 0;
-        const newTopScores = [...prev.topScores, { score: action.score, date: new Date().toISOString() }]
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 10);
-        const updated: GameStats = {
-          gamesPlayed: prev.gamesPlayed + 1,
-          gamesWon: prev.gamesWon + (action.won ? 1 : 0),
-          gamesLost: prev.gamesLost + (!action.won ? 1 : 0),
-          bestScore: Math.max(prev.bestScore, action.score),
-          totalPlaytime: prev.totalPlaytime + action.duration,
-          currentStreak: newStreak,
-          bestStreak: Math.max(prev.bestStreak, newStreak),
-          topScores: newTopScores,
-        };
-        const global = profile.globalStats;
-        return {
-          ...profile,
-          stats: { ...profile.stats, [action.gameId]: updated },
-          globalStats: {
-            totalGames: global.totalGames + 1,
-            globalPlaytime: global.globalPlaytime + action.duration,
-            firstPlay: global.firstPlay ?? new Date().toISOString(),
-            lastPlay: new Date().toISOString(),
-          },
-          lastIncompleteGameId: null, // session completed — remove from Continue Playing
-          hiddenFromRecents: (profile.hiddenFromRecents ?? []).filter(id => id !== action.gameId), // re-show after new session
-        };
-      });
+      const profile = getActiveProfile(state);
+      const prev = profile.stats[action.gameId] ?? { ...DEFAULT_STATS };
+      const newStreak = action.won ? prev.currentStreak + 1 : 0;
+      const now = new Date().toISOString();
+      const newTopScores = [...prev.topScores, { score: action.score, date: now }]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 10);
+      const updated: GameStats = {
+        gamesPlayed: prev.gamesPlayed + 1,
+        gamesWon: prev.gamesWon + (action.won ? 1 : 0),
+        gamesLost: prev.gamesLost + (!action.won ? 1 : 0),
+        bestScore: Math.max(prev.bestScore, action.score),
+        totalPlaytime: prev.totalPlaytime + action.duration,
+        currentStreak: newStreak,
+        bestStreak: Math.max(prev.bestStreak, newStreak),
+        topScores: newTopScores,
+      };
+      const global = profile.globalStats;
+      // Build the post-update profile so deriveNewAchievements sees fresh stats.
+      const updatedProfile: Profile = {
+        ...profile,
+        stats: { ...profile.stats, [action.gameId]: updated },
+        globalStats: {
+          totalGames: global.totalGames + 1,
+          globalPlaytime: global.globalPlaytime + action.duration,
+          firstPlay: global.firstPlay ?? now,
+          lastPlay: now,
+        },
+        lastIncompleteGameId: null,
+        hiddenFromRecents: (profile.hiddenFromRecents ?? []).filter(id => id !== action.gameId),
+      };
+      // Derive achievements from the already-updated profile (pure, no side-effects).
+      const ctx = action.context ?? {};
+      const { unlocked, toasts } = deriveNewAchievements(updatedProfile, action.gameId, ctx);
+      const finalProfile: Profile = unlocked.length > 0
+        ? { ...updatedProfile, unlockedAchievements: [...updatedProfile.unlockedAchievements, ...unlocked] }
+        : updatedProfile;
+      return {
+        ...state,
+        profiles: state.profiles.map(p => p.id === state.activeProfileId ? finalProfile : p),
+        toasts: [...state.toasts, ...toasts],
+      };
     }
 
     case 'UNLOCK_ACHIEVEMENT': {
@@ -381,8 +489,7 @@ interface AppContextValue {
   switchProfile: (id: string) => void;
   deleteProfile: (id: string) => void;
   toggleFavoriteGame: (gameId: string) => void;
-  recordGame: (gameId: string, won: boolean, score: number, duration: number) => void;
-  checkAchievements: (gameId: string, context: Record<string, unknown>) => void;
+  recordGame: (gameId: string, won: boolean, score: number, duration: number, context?: Record<string, unknown>) => void;
   bestScore: (gameId: string) => number;
   resetStats: () => void;
   resetAchievements: () => void;
@@ -495,102 +602,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'TOGGLE_FAVORITE_GAME', gameId });
   }, []);
 
-  const recordGame = useCallback((gameId: string, won: boolean, score: number, duration: number) => {
+  const recordGame = useCallback((gameId: string, won: boolean, score: number, duration: number, context?: Record<string, unknown>) => {
     hapticHeavy();
-    dispatch({ type: 'RECORD_GAME', gameId, won, score, duration });
+    dispatch({ type: 'RECORD_GAME', gameId, won, score, duration, context });
   }, []);
 
-  const checkAchievements = useCallback((gameId: string, context: Record<string, unknown>) => {
-    const profile = getActiveProfile(state);
-    const unlocked = profile.unlockedAchievements.map(a => a.id);
-    const gs = profile.globalStats;
-
-    const checks: Array<{ id: string; condition: () => boolean }> = [
-      { id: 'first_game', condition: () => (gs.totalGames + 1) >= 1 },
-      { id: 'first_win', condition: () => context.won === true && !profile.unlockedAchievements.find(a => a.id === 'first_win') },
-      { id: 'played_5', condition: () => (gs.totalGames + 1) >= 5 },
-      { id: 'played_25', condition: () => (gs.totalGames + 1) >= 25 },
-      { id: 'played_50', condition: () => (gs.totalGames + 1) >= 50 },
-      { id: 'played_100', condition: () => (gs.totalGames + 1) >= 100 },
-      { id: 'playtime_1h', condition: () => (gs.globalPlaytime + (context.duration as number ?? 0)) >= 3600 },
-      { id: 'playtime_5h', condition: () => (gs.globalPlaytime + (context.duration as number ?? 0)) >= 18000 },
-      { id: 'playtime_10h', condition: () => (gs.globalPlaytime + (context.duration as number ?? 0)) >= 36000 },
-      // per-game
-      { id: `${gameId}_first`, condition: () => (profile.stats[gameId]?.gamesPlayed ?? 0) === 0 },
-      { id: `${gameId}_win`, condition: () => context.won === true },
-      // snake
-      { id: 'snake_100', condition: () => gameId === 'snake' && (context.score as number) >= 100 },
-      { id: 'snake_500', condition: () => gameId === 'snake' && (context.score as number) >= 500 },
-      // tetris
-      { id: 'tetris_1000', condition: () => gameId === 'tetris' && (context.score as number) >= 1000 },
-      { id: 'tetris_10000', condition: () => gameId === 'tetris' && (context.score as number) >= 10000 },
-      { id: 'tetris_tetris', condition: () => gameId === 'tetris' && (context.tetris as boolean) === true },
-      // 2048
-      { id: '2048_1024', condition: () => gameId === 'game2048' && (context.maxTile as number) >= 1024 },
-      { id: '2048_2048', condition: () => gameId === 'game2048' && (context.maxTile as number) >= 2048 },
-      // memory
-      { id: 'memory_perfect', condition: () => gameId === 'memory' && context.won === true && (context.errors as number) === 0 },
-      // pong
-      { id: 'pong_shutout', condition: () => gameId === 'pong' && context.won === true && (context.aiScore as number) === 0 },
-      // flappy
-      { id: 'flappy_10', condition: () => gameId === 'flappy' && (context.score as number) >= 10 },
-      { id: 'flappy_50', condition: () => gameId === 'flappy' && (context.score as number) >= 50 },
-      // space
-      { id: 'space_wave3', condition: () => gameId === 'spaceinvaders' && (context.wave as number) >= 3 },
-      { id: 'space_1000', condition: () => gameId === 'spaceinvaders' && (context.score as number) >= 1000 },
-      // asteroids
-      { id: 'asteroids_1000', condition: () => gameId === 'asteroids' && (context.score as number) >= 1000 },
-      { id: 'asteroids_5000', condition: () => gameId === 'asteroids' && (context.score as number) >= 5000 },
-      // runner
-      { id: 'runner_500', condition: () => gameId === 'runner' && (context.score as number) >= 500 },
-      { id: 'runner_2000', condition: () => gameId === 'runner' && (context.score as number) >= 2000 },
-      // neon dash
-      { id: 'neon_1000', condition: () => gameId === 'neonblob' && (context.score as number) >= 1000 },
-      { id: 'neon_5000', condition: () => gameId === 'neonblob' && (context.score as number) >= 5000 },
-      // sudoku
-      { id: 'sudoku_hard', condition: () => gameId === 'sudoku' && context.won === true && context.difficulty === 'hard' },
-      // explorer
-      {
-        id: 'played_5_games',
-        condition: () => {
-          const played = new Set(Object.keys(profile.stats).filter(k => (profile.stats[k]?.gamesPlayed ?? 0) > 0));
-          played.add(gameId);
-          return played.size >= 5;
-        }
-      },
-      {
-        id: 'played_all_games',
-        condition: () => {
-          const played = new Set(Object.keys(profile.stats).filter(k => (profile.stats[k]?.gamesPlayed ?? 0) > 0));
-          played.add(gameId);
-          return played.size >= 15;
-        }
-      },
-    ];
-
-    for (const check of checks) {
-      if (!unlocked.includes(check.id) && ACHIEVEMENTS.find(a => a.id === check.id) && check.condition()) {
+  // Fire haptic feedback and schedule auto-removal for new achievement toasts.
+  // Using a ref-tracked set avoids double-scheduling on re-renders.
+  const scheduledToastsRef = useRef(new Set<string>());
+  useEffect(() => {
+    for (const toast of state.toasts) {
+      if (toast.type === 'achievement' && !scheduledToastsRef.current.has(toast.id)) {
+        scheduledToastsRef.current.add(toast.id);
         hapticSuccess();
-        dispatch({ type: 'UNLOCK_ACHIEVEMENT', id: check.id });
-        const ach = getAchievementById(check.id);
-        if (ach) {
-          const toastId = `toast_${Date.now()}_${check.id}`;
-          dispatch({
-            type: 'ADD_TOAST',
-            toast: {
-              id: toastId,
-              type: 'achievement',
-              title: 'Achievement Unlocked!',
-              message: ach.name,
-              icon: ach.icon,
-              color: ach.color,
-            },
-          });
-          setTimeout(() => dispatch({ type: 'REMOVE_TOAST', id: toastId }), 4000);
-        }
+        const id = toast.id;
+        setTimeout(() => dispatch({ type: 'REMOVE_TOAST', id }), 4000);
       }
     }
-  }, [state]);
+  }, [state.toasts]);
 
   const bestScore = useCallback((gameId: string): number => {
     return getActiveProfile(state).stats[gameId]?.bestScore ?? 0;
@@ -615,7 +644,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AppContext.Provider value={{ state, navigate, updateSettings, updateProfile, setGameDemoMode, recordGameDemoAction, addProfile, switchProfile, deleteProfile, toggleFavoriteGame, recordGame, checkAchievements, bestScore, resetStats, resetAchievements, markGameIncomplete, pauseGame, unmountGame, dismissFromRecents, clearIncompleteGame, activeProfile }}>
+    <AppContext.Provider value={{ state, navigate, updateSettings, updateProfile, setGameDemoMode, recordGameDemoAction, addProfile, switchProfile, deleteProfile, toggleFavoriteGame, recordGame, bestScore, resetStats, resetAchievements, markGameIncomplete, pauseGame, unmountGame, dismissFromRecents, clearIncompleteGame, activeProfile }}>
       {children}
     </AppContext.Provider>
   );

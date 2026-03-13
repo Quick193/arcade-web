@@ -1184,7 +1184,7 @@ function saveGameToStorage(saves: SavedGame[], gs: ChessState, setup: SetupState
 
 // ─── Main component ───────────────────────────────────────────
 export function ChessGame() {
-  const { recordGame, checkAchievements, state } = useApp();
+  const { recordGame, state } = useApp();
   const chessShowHints = state.settings.chessShowHints;
   const { isEnabled: aiDemoMode, isAdaptive, learning, mode: demoMode, cycleMode, getAdaptiveDelay, getActionWeight, recordPlayerAction } = useAIDemo('chess');
   const aiOnRef = useRef(aiDemoMode);
@@ -1492,15 +1492,14 @@ export function ChessGame() {
           const dur = (Date.now() - startTimeRef.current) / 1000;
           if (next.gameResult) {
             const won = next.gameResult.includes('White') && playerColor === 'w' || next.gameResult.includes('Black') && playerColor === 'b';
-            recordGame('chess', won, 0, dur);
-            checkAchievements('chess', { won });
+            recordGame('chess', won, 0, dur, { won });
           }
           // Use depth-2 look-ahead for eval (computed async below)
           return { ...next, evalScore: next.evalScore };
         });
       }
     }, getAdaptiveDelay(300));
-  }, [checkAchievements, difficulty, gameMode, getActionWeight, getAdaptiveDelay, isAdaptive, learning, playerColor, recordGame]);
+  }, [difficulty, gameMode, getActionWeight, getAdaptiveDelay, isAdaptive, learning, playerColor, recordGame]);
 
   const queuePremove = useCallback((from: [number, number], to: [number, number]) => {
     setPremoves((prevPremoves) => {
@@ -1686,8 +1685,7 @@ export function ChessGame() {
           const dur = (Date.now() - startTimeRef.current) / 1000;
           if (next.gameResult) {
             const won = next.gameResult.includes('White') && playerColor === 'w' || next.gameResult.includes('Black') && playerColor === 'b';
-            recordGame('chess', won, 0, dur);
-            checkAchievements('chess', { won });
+            recordGame('chess', won, 0, dur, { won });
           }
           return { ...next, prevEvalScore: prev.evalScore, lastMoveClassification: null };
         });
@@ -1696,7 +1694,7 @@ export function ChessGame() {
         setPremoves([]);
       }
     }
-  }, [gs.turn, gs.board, gs.ep, gs.cr, gs.history.length, playerColor, gameMode, setup, premoves, recordGame, checkAchievements]);
+  }, [gs.turn, gs.board, gs.ep, gs.cr, gs.history.length, playerColor, gameMode, setup, premoves, recordGame]);
 
   // Save handler
   const handleSave = useCallback(() => {
@@ -1933,8 +1931,7 @@ export function ChessGame() {
             const dur = (Date.now() - startTimeRef.current) / 1000;
             if (next.gameResult) {
               const won = next.gameResult.includes('White') && playerColor === 'w' || next.gameResult.includes('Black') && playerColor === 'b';
-              recordGame('chess', won, 0, dur);
-              checkAchievements('chess', { won });
+              recordGame('chess', won, 0, dur, { won });
             }
             if (gameMode === 'pvp') {
               setPvpTimers(t => t ? { ...t, [justMoved]: t[justMoved as 'w' | 'b'] + t.inc } : null);
@@ -1999,8 +1996,7 @@ export function ChessGame() {
               const dur = (Date.now() - startTimeRef.current) / 1000;
               if (next.gameResult) {
                 const won = next.gameResult.includes('White') && playerColor === 'w' || next.gameResult.includes('Black') && playerColor === 'b';
-                recordGame('chess', won, 0, dur);
-                checkAchievements('chess', { won });
+                recordGame('chess', won, 0, dur, { won });
               }
               if (gameMode === 'pvp') {
                 setPvpTimers(t => t ? { ...t, [justMoved]: t[justMoved as 'w' | 'b'] + t.inc } : null);
@@ -2032,8 +2028,7 @@ export function ChessGame() {
       const dur = (Date.now() - startTimeRef.current) / 1000;
       if (next.gameResult) {
         const won = next.gameResult.includes('White') && playerColor === 'w' || next.gameResult.includes('Black') && playerColor === 'b';
-        recordGame('chess', won, 0, dur);
-        checkAchievements('chess', { won });
+        recordGame('chess', won, 0, dur, { won });
       }
       return { ...next, prevEvalScore: prev.evalScore, lastMoveClassification: null };
     });

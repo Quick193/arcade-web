@@ -95,7 +95,7 @@ function createState(level = 1): GS {
 }
 
 export function BreakoutGame() {
-  const { recordGame, checkAchievements, bestScore, navigate, state } = useApp();
+  const { recordGame, bestScore, navigate, state } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('breakout');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -151,11 +151,10 @@ export function BreakoutGame() {
     if (gs.gameState === 'dead') return;
     gs.gameState = 'dead';
     const duration = (Date.now() - gs.startTime) / 1000;
-    recordGame('breakout', false, gs.score, duration);
-    checkAchievements('breakout', { score: gs.score, duration });
+    recordGame('breakout', false, gs.score, duration, { score: gs.score, duration });
     setPhase('gameover');
     setDisplayScore(gs.score);
-  }, [checkAchievements, recordGame]);
+  }, [recordGame]);
 
   const updatePaddle = useCallback((clientX: number) => {
     const canvas = canvasRef.current;
