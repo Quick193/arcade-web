@@ -142,9 +142,10 @@ export function FlappyGame() {
       : nextPipe.gapY;
 
     const speed = PIPE_SPEED_BASE + Math.floor(gs.score / 15) * 0.25;
-    // Target the center of the pipe opening
+    // Target the center of the pipe opening; cap lookahead so far-away pipes
+    // don't make the AI panic-flap (the 80-frame arc always ends too low)
     const framesAway = Math.max(1, (nextPipe.x + PIPE_W * 0.5 - gs.birdX) / speed);
-    const simFrames = Math.min(framesAway, 80);
+    const simFrames = Math.min(framesAway, 45);
 
     // Simulate trajectory WITHOUT flapping
     let simY = gs.birdY;
@@ -167,7 +168,11 @@ export function FlappyGame() {
     const willBeTooLow = simY > gapCenter + margin;
     const flapWouldOvershoot = simYFlap < gapCenter - margin || gs.birdY < 28;
 
-    if (willBeTooLow && !flapWouldOvershoot) startRun(false);
+    // Only flap when the bird isn't already going upward fast — this prevents
+    // the AI from re-flapping every frame after a flap (birdVY resets to -7
+    // so the no-flap simulation still shows a low landing, triggering another
+    // flap, which causes ceiling crashes)
+    if (willBeTooLow && !flapWouldOvershoot && gs.birdVY > -1) startRun(false);
   }, [startRun]);
 
   const render = useCallback((ctx: CanvasRenderingContext2D, gs: GS) => {
