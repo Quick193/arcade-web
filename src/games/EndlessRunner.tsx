@@ -18,7 +18,7 @@ const PLAYER_W = 24;
 const PLAYER_H = 32;
 const PLAYER_X_DEFAULT = 60;
 const PLAYER_X_MIN = 16;
-const PLAYER_X_MAX = W / 2;   // can't run too far ahead
+const CAMERA_RIGHT = 200;     // camera scrolls when player passes this x
 const PLAYER_MOVE_SPEED = 3.2;
 
 interface Platform { x: number; y: number; w: number; h: number; }
@@ -274,6 +274,7 @@ export function EndlessRunner() {
   const aiDecide = useCallback((gs: GS) => {
     if (!aiEnabledRef.current || gs.aiDisabled || !gs.alive) return;
     if (!gs.started) { gs.started = true; setPhase('playing'); }
+    gs.rightHeld = true; // always run right
 
     const px = gs.playerX + gs.worldX;
     const lookAhead = gs.speed * (isAdaptive ? 18 + getTraitValue('precision') * 12 : 22) + px;
@@ -295,7 +296,7 @@ export function EndlessRunner() {
     }
     if (!hasPlatformAhead) shouldJump = true;
 
-    gs.jumpQueued = (shouldJump) && gs.onGround;
+    gs.jumpQueued = shouldJump && (gs.onGround || gs.coyoteTimer > 0);
 
     // AI auto-fires fireball at nearby enemies
     if (gs.fireballCount > 0) {
@@ -539,12 +540,11 @@ export function EndlessRunner() {
 
     if (gs.alive && gs.started) {
       gs.frame += 1;
-      gs.score += Math.floor(gs.speed * 0.1);
       gs.speed = Math.min(2.6 + gs.frame * 0.0012, 6.6);
 
       // Horizontal player movement (left/right relative to screen)
       if (gs.leftHeld) gs.playerX = Math.max(PLAYER_X_MIN, gs.playerX - PLAYER_MOVE_SPEED);
-      if (gs.rightHeld) gs.playerX = Math.min(PLAYER_X_MAX, gs.playerX + PLAYER_MOVE_SPEED);
+      if (gs.rightHeld) gs.playerX += PLAYER_MOVE_SPEED;
 
       // Jump
       const canJump = gs.onGround || gs.coyoteTimer > 0;
@@ -599,8 +599,13 @@ export function EndlessRunner() {
       if (wasOnGround && !gs.onGround && gs.playerVY >= 0) gs.coyoteTimer = Math.max(gs.coyoteTimer, 0.12);
       if (gs.onGround) { gs.coyoteTimer = 0; gs.jumpHeldTime = 0; }
 
-      gs.worldX += gs.speed;
-      gs.spawnTimer -= gs.speed;
+      // Camera follow: scroll world only when player moves right past threshold
+      if (gs.playerX > CAMERA_RIGHT) {
+        const scrollDx = gs.playerX - CAMERA_RIGHT;
+        gs.worldX += scrollDx;
+        gs.spawnTimer -= scrollDx;
+        gs.playerX = CAMERA_RIGHT;
+      }
       if (gs.spawnTimer <= 0) {
         spawnChunk(gs);
         gs.spawnTimer = 180 + Math.random() * 110;

@@ -120,6 +120,19 @@ function drawInvader(ctx: CanvasRenderingContext2D, x: number, y: number, type: 
   }
 }
 
+function canShootClear(gs: GS, playerX: number): boolean {
+  const bulletX = playerX + 14;
+  for (const shield of gs.shields) {
+    if (bulletX < shield.x || bulletX > shield.x + 40) continue;
+    const col = Math.floor((bulletX - shield.x) / 5);
+    if (col < 0 || col >= 8) continue;
+    for (let r = 0; r < shield.cells.length; r += 1) {
+      if (shield.cells[r][col]) return false;
+    }
+  }
+  return true;
+}
+
 function createState(wave = 1): GS {
   return {
     invaders: makeInvaders(),
@@ -262,20 +275,45 @@ export function SpaceInvadersGame() {
         .sort((a, b) => b.rank - a.rank)[0]?.invader ?? targets[Math.floor(targets.length / 2)]
       : targets[Math.floor(targets.length / 2)];
     const tx = target.x + INVADER_W / 2;
-    const px = gs.playerX + 14;
     const tolerance = isAdaptive ? 4 + (1 - getTraitValue('precision')) * 10 : 5;
     const moveSpeed = isAdaptive ? 3 + getTraitValue('tempo') * 2 : 4;
 
-    if (px < tx - tolerance) gs.playerX = Math.min(W - 28, gs.playerX + moveSpeed);
-    else if (px > tx + tolerance) gs.playerX = Math.max(0, gs.playerX - moveSpeed);
-
+    // Dodge incoming bullets first
+    let px = gs.playerX + 14;
     for (const bullet of gs.enemyBullets) {
       if (Math.abs(bullet.x - px) < 26 + (isAdaptive ? getTraitValue('risk') * 18 : 0) && bullet.y > H - 200) {
         gs.playerX += px < bullet.x ? -moveSpeed : moveSpeed;
         gs.playerX = Math.max(0, Math.min(W - 28, gs.playerX));
       }
     }
-    if (Math.abs(px - tx) < 10) shoot(false);
+    px = gs.playerX + 14;
+
+    // Shield-aware shooting: find a clear lane or slide to one
+    const clearHere = canShootClear(gs, gs.playerX);
+    if (clearHere) {
+      if (px < tx - tolerance) gs.playerX = Math.min(W - 28, gs.playerX + moveSpeed);
+      else if (px > tx + tolerance) gs.playerX = Math.max(0, gs.playerX - moveSpeed);
+      if (Math.abs(gs.playerX + 14 - tx) < 10) shoot(false);
+    } else {
+      // Scan ±80px for nearest clear-shot position
+      let clearX: number | null = null;
+      for (let off = 4; off <= 80; off += 4) {
+        const lx = gs.playerX - off;
+        const rx = gs.playerX + off;
+        if (lx >= 0 && canShootClear(gs, lx)) { clearX = lx; break; }
+        if (rx <= W - 28 && canShootClear(gs, rx)) { clearX = rx; break; }
+      }
+      if (clearX !== null) {
+        // Slide toward clear lane
+        gs.playerX += gs.playerX < clearX ? moveSpeed : -moveSpeed;
+        gs.playerX = Math.max(0, Math.min(W - 28, gs.playerX));
+      } else {
+        // All lanes blocked — shoot through shields, still chase target
+        if (px < tx - tolerance) gs.playerX = Math.min(W - 28, gs.playerX + moveSpeed);
+        else if (px > tx + tolerance) gs.playerX = Math.max(0, gs.playerX - moveSpeed);
+        if (Math.abs(gs.playerX + 14 - tx) < 10) shoot(false);
+      }
+    }
   }, [getActionWeight, getTraitValue, isAdaptive, shoot, startRun]);
 
   const draw = useCallback((ctx: CanvasRenderingContext2D, gs: GS) => {

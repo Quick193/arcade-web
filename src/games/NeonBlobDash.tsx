@@ -13,12 +13,15 @@ const W = 480;
 const H = 300;
 const GROUND_Y = 240;
 const GRAVITY = 0.55;
-const JUMP_POWER = -10.5;
-const BASE_SPEED = 4.1;
+const JUMP_POWER = -11.5;        // slightly stronger jump
+const JUMP_HOLD_FRAMES = 14;     // frames of reduced gravity on hold
+const JUMP_HOLD_GRAVITY = 0.24;  // gravity during hold phase
+const BASE_SPEED = 3.8;          // slightly slower start
 const BLOB_X = 70;
 const BLOB_R = 18;
 
-interface Obstacle { x: number; y: number; w: number; h: number; type: 'spike' | 'wall' | 'gate_low' | 'gate_high' | 'ceiling_bar' | 'double_spike'; }
+// ceiling_bar removed — it's confusing and breaks jump intuition
+interface Obstacle { x: number; y: number; w: number; h: number; type: 'spike' | 'wall' | 'gate_low' | 'gate_high' | 'double_spike'; }
 interface Particle { x: number; y: number; vx: number; vy: number; color: string; life: number; size: number; }
 interface Star { x: number; y: number; brightness: number; }
 interface GS {
@@ -26,6 +29,9 @@ interface GS {
   blobVY: number;
   onGround: boolean;
   ducking: boolean;
+  jumpHeld: boolean;
+  jumpHeldFrames: number;
+  coyoteTimer: number;
   speed: number;
   obstacles: Obstacle[];
   particles: Particle[];
@@ -52,6 +58,9 @@ function initGs(): GS {
     blobVY: 0,
     onGround: true,
     ducking: false,
+    jumpHeld: false,
+    jumpHeldFrames: 0,
+    coyoteTimer: 0,
     speed: BASE_SPEED,
     obstacles: [],
     particles: [],
@@ -61,7 +70,7 @@ function initGs(): GS {
     alive: true,
     started: false,
     frame: 0,
-    spawnTimer: 60,
+    spawnTimer: 80,
     aiDisabled: false,
     bestSession: 0,
     duckPressed: false,
@@ -107,18 +116,26 @@ export function NeonBlobDash() {
       gs.started = true;
       setPhase('playing');
     }
-    if (gs.onGround) {
+    const canJump = gs.onGround || gs.coyoteTimer > 0;
+    if (canJump) {
       sfx('jump');
       recordPlayerAction('jump', { aggression: 0.6, risk: 0.52, tempo: 0.6 });
       gs.blobVY = JUMP_POWER;
       gs.onGround = false;
+      gs.coyoteTimer = 0;
+      gs.jumpHeld = true;
+      gs.jumpHeldFrames = 0;
       if (showParticlesRef.current) {
         for (let index = 0; index < 8; index += 1) {
           gs.particles.push({ x: BLOB_X, y: gs.blobY + BLOB_R, vx: (Math.random() - 0.5) * 5, vy: Math.random() * 3, color: '#00ffff', life: 0.5, size: 4 });
         }
       }
     }
-  }, [recordPlayerAction]);
+  }, [recordPlayerAction, sfx]);
+
+  const releaseJump = useCallback(() => {
+    gsRef.current.jumpHeld = false;
+  }, []);
 
   const duck = useCallback((active: boolean, manual = true) => {
     const gs = gsRef.current;
@@ -139,7 +156,7 @@ export function NeonBlobDash() {
     recordGame('neonblob', false, gs.score * 10, gs.frame / 60, { score: gs.score });
     setPhase('gameover');
     setDisplayScore(gs.score * 10);
-  }, [recordGame]);
+  }, [recordGame, sfx]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -155,36 +172,33 @@ export function NeonBlobDash() {
     const score = gs.score;
 
     if (rand < 0.28) {
-      // Single spike
+      // Single spike — always valid
       const h = 20 + Math.random() * 30;
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - h, w: 24, h, type: 'spike' });
-    } else if (rand < 0.48 && score > 3) {
-      // Double spike — two close together, wider jump required
+    } else if (rand < 0.48 && score > 4) {
+      // Double spike — needs wider/higher jump
       const h1 = 18 + Math.random() * 22;
       const h2 = 16 + Math.random() * 26;
-      gs.obstacles.push({ x: W + 20,      y: GROUND_Y - h1, w: 22, h: h1, type: 'double_spike' });
+      gs.obstacles.push({ x: W + 20, y: GROUND_Y - h1, w: 22, h: h1, type: 'double_spike' });
       gs.obstacles.push({ x: W + 20 + 30, y: GROUND_Y - h2, w: 22, h: h2, type: 'double_spike' });
     } else if (rand < 0.62) {
-      // Wall
+      // Wall — must jump
       const h = 32 + Math.random() * 40;
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - h, w: 18, h, type: 'wall' });
-    } else if (rand < 0.76 && score > 5) {
-      // Low laser gate — must duck
+    } else if (rand < 0.76 && score > 8) {
+      // Low laser gate — must duck (raised threshold from 5 to 8)
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - 32, w: 60, h: 8, type: 'gate_low' });
-    } else if (rand < 0.88 && score > 10) {
-      // High electrified bar near ground — must jump over
+    } else if (rand < 0.90 && score > 15) {
+      // High electrified bar near ground — must jump (raised threshold from 10 to 15)
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - 60, w: 50, h: 35, type: 'gate_high' });
-    } else if (score > 18) {
-      // Ceiling bar — hangs from near the top; blob must NOT jump while passing under it
-      // (at peak, blob top ≈ 104; ceiling occupies y=60..105 → collision if jumping)
-      const barW = 80 + Math.random() * 60;
-      gs.obstacles.push({ x: W + 20, y: 55, w: barW, h: 55, type: 'ceiling_bar' });
     } else {
+      // Fallback: spike
       const h = 20 + Math.random() * 30;
       gs.obstacles.push({ x: W + 20, y: GROUND_Y - h, w: 24, h, type: 'spike' });
     }
   }, []);
 
+  // AI: improved look-ahead + persistent duck state + reliable jump timing
   const aiDecide = useCallback((gs: GS) => {
     if (!aiEnabledRef.current || gs.aiDisabled || !gs.alive) return;
     if (!gs.started) {
@@ -193,24 +207,46 @@ export function NeonBlobDash() {
       return;
     }
 
-    const lookAhead = gs.speed * 18;
+    // Extended look-ahead: enough warning to complete a full jump arc (~38 frames)
+    const lookAhead = gs.speed * 34 + 30;
     const blobRight = BLOB_X + BLOB_R;
-    for (const obstacle of gs.obstacles) {
-      if (obstacle.x - lookAhead > blobRight) continue;
-      if (obstacle.x + obstacle.w < BLOB_X - BLOB_R) continue;
 
-      if (obstacle.type === 'spike' || obstacle.type === 'wall' || obstacle.type === 'double_spike') {
-        const jumpEarly = !isAdaptive || getActionWeight('jump') >= getActionWeight('duck') || getTraitValue('risk') > 0.48;
-        if (gs.onGround && jumpEarly) jump(false);
-      } else if (obstacle.type === 'gate_low') {
-        duck(true, false);
-      } else if (obstacle.type === 'gate_high' && gs.onGround) {
-        jump(false);
-      } else if (obstacle.type === 'ceiling_bar') {
-        // Stay on ground — do NOT jump
-        duck(false, false);
+    let needsDuck = false;
+    let needsJump = false;
+
+    for (const obs of gs.obstacles) {
+      if (obs.x + obs.w < BLOB_X - BLOB_R) continue;           // already passed
+      if (obs.x > blobRight + lookAhead) continue;              // too far ahead
+
+      if (obs.type === 'gate_low') {
+        needsDuck = true;
+        break;
       }
-      break;
+      if (
+        obs.type === 'spike' ||
+        obs.type === 'wall' ||
+        obs.type === 'double_spike' ||
+        obs.type === 'gate_high'
+      ) {
+        needsJump = true;
+        break;
+      }
+    }
+
+    if (needsDuck) {
+      // Keep ducked until gate clears — call every frame so it stays active
+      duck(true, false);
+    } else {
+      duck(false, false);
+      if (needsJump) {
+        const canJump = gs.onGround || gs.coyoteTimer > 0;
+        if (canJump) {
+          // Adaptive: sometimes hold jump for higher arcs
+          const wantHighJump = !isAdaptive || getActionWeight('jump') > 0.55 || getTraitValue('aggression') > 0.5;
+          jump(false);
+          if (wantHighJump) gs.jumpHeld = true;  // hold for max height
+        }
+      }
     }
   }, [duck, getActionWeight, getTraitValue, isAdaptive, jump]);
 
@@ -248,7 +284,6 @@ export function NeonBlobDash() {
     gs.obstacles.forEach((obstacle) => {
       ctx.save();
       if (obstacle.type === 'double_spike') {
-        // Same as spike but slightly different colour to signal "wider gap needed"
         ctx.shadowColor = '#ff4400';
         ctx.shadowBlur = 18;
         ctx.fillStyle = '#ff3300';
@@ -264,35 +299,7 @@ export function NeonBlobDash() {
         ctx.moveTo(obstacle.x + obstacle.w / 2, obstacle.y + 2);
         ctx.lineTo(obstacle.x + 2, obstacle.y + obstacle.h - 1);
         ctx.stroke();
-      } else if (obstacle.type === 'ceiling_bar') {
-        // Horizontal ceiling hazard — hanging electric beam
-        const t = Date.now() / 300;
-        const pulse = 0.7 + 0.3 * Math.sin(t);
-        ctx.shadowColor = '#ffcc00'; ctx.shadowBlur = 24 * pulse;
-        // Dark background plate
-        ctx.fillStyle = '#1a1000';
-        ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
-        // Glowing warning stripes
-        ctx.fillStyle = `rgba(255,200,0,${0.15 * pulse})`;
-        ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
-        // Bright top edge
-        ctx.strokeStyle = `rgba(255,220,0,${pulse})`;
-        ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.moveTo(obstacle.x, obstacle.y); ctx.lineTo(obstacle.x + obstacle.w, obstacle.y); ctx.stroke();
-        // Electric bottom edge
-        ctx.strokeStyle = `rgba(255,180,0,${pulse})`;
-        ctx.lineWidth = 2.5;
-        ctx.setLineDash([6, 3]);
-        ctx.beginPath(); ctx.moveTo(obstacle.x, obstacle.y + obstacle.h); ctx.lineTo(obstacle.x + obstacle.w, obstacle.y + obstacle.h); ctx.stroke();
-        ctx.setLineDash([]);
-        // "STAY LOW" warning label just below the bar
-        ctx.shadowBlur = 8;
-        ctx.fillStyle = '#ffdd44';
-        ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('STAY LOW', obstacle.x + obstacle.w / 2, obstacle.y + obstacle.h + 11);
-        ctx.textAlign = 'left';
       } else if (obstacle.type === 'spike') {
-        // Sharp triangle with bright red neon glow and outline
         ctx.shadowColor = '#ff0000';
         ctx.shadowBlur = 18;
         ctx.fillStyle = '#ff2222';
@@ -302,12 +309,10 @@ export function NeonBlobDash() {
         ctx.lineTo(obstacle.x + obstacle.w, obstacle.y + obstacle.h);
         ctx.closePath();
         ctx.fill();
-        // Neon outline
         ctx.strokeStyle = '#ff6666';
         ctx.lineWidth = 1.5;
         ctx.shadowBlur = 8;
         ctx.stroke();
-        // Inner brighter highlight along left face
         ctx.strokeStyle = 'rgba(255,180,180,0.6)';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -315,12 +320,10 @@ export function NeonBlobDash() {
         ctx.lineTo(obstacle.x + 2, obstacle.y + obstacle.h - 1);
         ctx.stroke();
       } else if (obstacle.type === 'wall') {
-        // Solid neon barrier with horizontal scan lines for techy look
         ctx.fillStyle = '#ff6600';
         ctx.shadowColor = '#ff6600';
         ctx.shadowBlur = 12;
         ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
-        // Scan lines inside
         ctx.shadowBlur = 0;
         ctx.strokeStyle = 'rgba(255,200,100,0.5)';
         ctx.lineWidth = 1;
@@ -330,25 +333,26 @@ export function NeonBlobDash() {
           ctx.lineTo(obstacle.x + obstacle.w - 1, sy);
           ctx.stroke();
         }
-        // Bright neon border
         ctx.strokeStyle = '#ffaa44';
         ctx.lineWidth = 1.5;
         ctx.shadowColor = '#ff6600';
         ctx.shadowBlur = 6;
         ctx.strokeRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
+        // JUMP label
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = '#ffcc88';
+        ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
+        ctx.fillText('JUMP', obstacle.x + obstacle.w / 2, obstacle.y - 6);
+        ctx.textAlign = 'left';
       } else if (obstacle.type === 'gate_low') {
-        // Full-screen laser gate with emitter posts — must duck
         const t = Date.now() / 220;
         const pulse = 0.65 + 0.35 * Math.sin(t);
         const beamY = obstacle.y + obstacle.h / 2;
         const postH = GROUND_Y - obstacle.y;
-        // Left emitter post
         ctx.fillStyle = '#440033';
         ctx.shadowBlur = 0;
         ctx.fillRect(obstacle.x, obstacle.y, 7, postH);
-        // Right emitter post
         ctx.fillRect(obstacle.x + obstacle.w - 7, obstacle.y, 7, postH);
-        // Emitter nodes (glowing orbs at top of posts)
         for (const px of [obstacle.x + 3.5, obstacle.x + obstacle.w - 3.5]) {
           ctx.shadowColor = '#ff00ff';
           ctx.shadowBlur = 20 * pulse;
@@ -357,7 +361,6 @@ export function NeonBlobDash() {
           ctx.arc(px, obstacle.y - 4, 6, 0, Math.PI * 2);
           ctx.fill();
         }
-        // Beam extends to screen edges for wall-to-wall laser feel
         const beamLeft = Math.min(obstacle.x, 0);
         const beamRight = Math.max(obstacle.x + obstacle.w, W);
         ctx.shadowColor = '#ff00ff';
@@ -368,7 +371,6 @@ export function NeonBlobDash() {
         ctx.moveTo(beamLeft, beamY);
         ctx.lineTo(beamRight, beamY);
         ctx.stroke();
-        // Wide soft glow halo
         ctx.strokeStyle = `rgba(255, 0, 255, 0.18)`;
         ctx.lineWidth = 16;
         ctx.shadowBlur = 40;
@@ -376,7 +378,6 @@ export function NeonBlobDash() {
         ctx.moveTo(beamLeft, beamY);
         ctx.lineTo(beamRight, beamY);
         ctx.stroke();
-        // DUCK label
         ctx.shadowBlur = 8;
         ctx.fillStyle = '#ff88ff';
         ctx.font = 'bold 9px monospace';
@@ -384,10 +385,9 @@ export function NeonBlobDash() {
         ctx.fillText('DUCK', obstacle.x + obstacle.w / 2, obstacle.y - 12);
         ctx.textAlign = 'left';
       } else {
-        // gate_high: electrified low barrier — must jump over
+        // gate_high
         const t = Date.now() / 230;
         const pulse = 0.65 + 0.35 * Math.sin(t);
-        // Body gradient
         const grad = ctx.createLinearGradient(obstacle.x, obstacle.y, obstacle.x, obstacle.y + obstacle.h);
         grad.addColorStop(0, `rgba(0, 255, 180, ${0.85 * pulse})`);
         grad.addColorStop(1, 'rgba(0, 80, 60, 0.85)');
@@ -395,7 +395,6 @@ export function NeonBlobDash() {
         ctx.shadowColor = '#00ffaa';
         ctx.shadowBlur = 18 * pulse;
         ctx.fillRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h);
-        // Bright top edge
         ctx.strokeStyle = `rgba(180, 255, 240, ${pulse})`;
         ctx.lineWidth = 2.5;
         ctx.shadowBlur = 14;
@@ -403,7 +402,6 @@ export function NeonBlobDash() {
         ctx.moveTo(obstacle.x, obstacle.y + 1);
         ctx.lineTo(obstacle.x + obstacle.w, obstacle.y + 1);
         ctx.stroke();
-        // Dashed electric bottom edge
         ctx.strokeStyle = `rgba(0, 255, 160, 0.6)`;
         ctx.lineWidth = 1.5;
         ctx.setLineDash([5, 3]);
@@ -412,7 +410,6 @@ export function NeonBlobDash() {
         ctx.lineTo(obstacle.x + obstacle.w, obstacle.y + obstacle.h - 1);
         ctx.stroke();
         ctx.setLineDash([]);
-        // End emitter posts
         ctx.shadowBlur = 0;
         for (const px of [obstacle.x, obstacle.x + obstacle.w - 5]) {
           ctx.fillStyle = '#003322';
@@ -424,7 +421,6 @@ export function NeonBlobDash() {
           ctx.arc(px + 2.5, obstacle.y - 6, 4, 0, Math.PI * 2);
           ctx.fill();
         }
-        // JUMP label
         ctx.shadowBlur = 8;
         ctx.fillStyle = '#aaffee';
         ctx.font = 'bold 9px monospace';
@@ -449,7 +445,6 @@ export function NeonBlobDash() {
 
     const blobHeight = gs.ducking ? BLOB_R * 0.6 : BLOB_R;
     const hue = (180 + Math.sin(gs.glowPhase) * 60) % 360;
-    // Trail shadow — three fading echoes behind the blob
     for (let ti = 3; ti >= 1; ti -= 1) {
       const trailAlpha = ti === 3 ? 0.08 : ti === 2 ? 0.13 : 0.18;
       const trailX = BLOB_X - ti * 9;
@@ -468,7 +463,6 @@ export function NeonBlobDash() {
     ctx.beginPath();
     ctx.ellipse(BLOB_X, gs.blobY, BLOB_R, blobHeight, 0, 0, Math.PI * 2);
     ctx.fill();
-    // White highlight streak — diagonal streak across upper-left of blob
     ctx.shadowBlur = 0;
     const streakGrad = ctx.createLinearGradient(
       BLOB_X - BLOB_R * 0.6, gs.blobY - blobHeight * 0.7,
@@ -480,7 +474,6 @@ export function NeonBlobDash() {
     ctx.beginPath();
     ctx.ellipse(BLOB_X - BLOB_R * 0.28, gs.blobY - blobHeight * 0.32, BLOB_R * 0.38, blobHeight * 0.28, -0.4, 0, Math.PI * 2);
     ctx.fill();
-    // Small top-left glint dot
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.beginPath();
     ctx.arc(BLOB_X - BLOB_R * 0.38, gs.blobY - blobHeight * 0.52, 2.5, 0, Math.PI * 2);
@@ -508,7 +501,7 @@ export function NeonBlobDash() {
     }
   }, []);
 
-  const step = useCallback((_: number, ts: number) => {
+  const step = useCallback((dtMs: number, ts: number) => {
     const gs = gsRef.current;
     const ctx = ctxRef.current;
     if (!ctx) return;
@@ -520,25 +513,44 @@ export function NeonBlobDash() {
     if (gs.alive && gs.started) {
       gs.distance += gs.speed;
       gs.score = Math.floor(gs.distance / 50);
-      gs.speed = BASE_SPEED + gs.score * 0.015;
+      // Gentler speed ramp: max +2.8 over all time
+      gs.speed = BASE_SPEED + Math.min(gs.score * 0.008, 2.8);
+
+      const wasOnGround = gs.onGround;
 
       if (!gs.onGround) {
-        gs.blobVY += GRAVITY;
+        // Variable-height jump: hold button reduces gravity during ascent
+        if (gs.jumpHeld && gs.blobVY < 0) {
+          gs.jumpHeldFrames += 1;
+          gs.blobVY += gs.jumpHeldFrames < JUMP_HOLD_FRAMES ? JUMP_HOLD_GRAVITY : GRAVITY;
+        } else {
+          gs.blobVY += GRAVITY;
+        }
         gs.blobY += gs.blobVY;
       }
+
+      // Coyote time: short window to jump after leaving edge
+      if (wasOnGround && !gs.onGround && gs.blobVY >= 0) {
+        gs.coyoteTimer = 0.1;
+      }
+      if (gs.coyoteTimer > 0) gs.coyoteTimer -= dtMs / 1000;
 
       const groundY = GROUND_Y - (gs.ducking ? BLOB_R * 0.6 : BLOB_R);
       if (gs.blobY >= groundY) {
         gs.blobY = groundY;
         gs.blobVY = 0;
         gs.onGround = true;
+        gs.jumpHeld = false;
+        gs.jumpHeldFrames = 0;
+        gs.coyoteTimer = 0;
         gs.ducking = gs.duckPressed;
       }
 
+      // More generous spawn timer; slower increase
       gs.spawnTimer -= 1;
       if (gs.spawnTimer <= 0) {
         spawnObstacle(gs);
-        gs.spawnTimer = Math.max(42, Math.floor(78 + Math.random() * 64 - gs.score * 0.2));
+        gs.spawnTimer = Math.max(55, Math.floor(90 + Math.random() * 70 - gs.score * 0.15));
       }
 
       gs.obstacles = gs.obstacles.filter((obstacle) => {
@@ -562,11 +574,6 @@ export function NeonBlobDash() {
           break;
         }
         if (obstacle.type === 'gate_high' && blobBottom > obstacle.y && blobTop < obstacle.y + obstacle.h) {
-          die(gs);
-          break;
-        }
-        // ceiling_bar: dangerous only when blob is airborne (jumping)
-        if (obstacle.type === 'ceiling_bar' && !gs.onGround && blobTop < obstacle.y + obstacle.h && blobBottom > obstacle.y) {
           die(gs);
           break;
         }
@@ -600,6 +607,24 @@ export function NeonBlobDash() {
 
   useGameLoop(step);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (['Space', 'ArrowUp', 'KeyW', 'ArrowDown', 'KeyS'].includes(e.code)) e.preventDefault();
+      if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') jump(true);
+      if (e.code === 'ArrowDown' || e.code === 'KeyS') duck(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') releaseJump();
+      if (e.code === 'ArrowDown' || e.code === 'KeyS') duck(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [jump, releaseJump, duck]);
+
   return (
     <GameWrapper
       title="Neon Dash"
@@ -609,10 +634,10 @@ export function NeonBlobDash() {
       controls={(
         <MobileControlBar
           items={[
-            { id: 'jump', label: 'JUMP', onPress: () => jump(true), tone: 'accent', wide: true },
+            { id: 'jump', label: 'JUMP', onPress: () => jump(true), onRelease: releaseJump, tone: 'accent', wide: true },
             { id: 'duck', label: 'DUCK', onPress: () => duck(true), onRelease: () => duck(false), tone: 'danger', wide: true },
           ]}
-          hint="Jump over spikes and high walls, duck under low gates. The run now opens and restarts through the shared mobile overlay."
+          hint="Hold JUMP longer for a higher leap. Duck under laser gates. JUMP over spikes, walls and green barriers."
         />
       )}
     >
@@ -622,16 +647,18 @@ export function NeonBlobDash() {
           width={W}
           height={H}
           onPointerDown={() => jump(true)}
+          onPointerUp={releaseJump}
+          onPointerLeave={releaseJump}
           className="game-canvas rounded-[28px] border border-white/10 bg-black/20 shadow-2xl"
           style={{ width: canvasSize.width, height: canvasSize.height }}
         />
         <GameOverlay
           visible={phase !== 'playing'}
           eyebrow={phase === 'ready' ? 'Touch Run' : 'Dash Lost'}
-          title={phase === 'ready' ? 'Dash Started' : 'Reboot The Dash'}
+          title={phase === 'ready' ? 'Neon Dash' : 'Reboot The Dash'}
           subtitle={phase === 'ready'
-            ? 'Jump over spikes and walls, duck under laser beams, leap onto platforms.'
-            : 'Restart launches a clean run. Use the shared Jump and Duck bar for more reliable thumb control.'}
+            ? 'Hold JUMP for higher leaps, tap for a small hop. Duck under laser beams.'
+            : 'Restart launches a clean run. Hold jump longer to clear bigger obstacles.'}
           score={displayScore}
           best={best}
           primaryLabel={phase === 'ready' ? 'Start Run' : 'Play Again'}
