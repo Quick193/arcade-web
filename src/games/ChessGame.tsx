@@ -1214,10 +1214,11 @@ export function ChessGame() {
   const analysisRef = useRef(analysis);
   analysisRef.current = analysis;
 
-  // Arrows and Premoves
+  // Arrows, Premoves, and Colored Squares (chess.com-style planning)
   const [arrows, setArrows] = useState<{ from: [number, number], to: [number, number] }[]>([]);
   const [premoves, setPremoves] = useState<Premove[]>([]);
   const arrowStartRef = useRef<[number, number] | null>(null);
+  const [coloredSquares, setColoredSquares] = useState<Map<string, string>>(new Map());
 
   // Save/load state
   const [savedGames, setSavedGames] = useState<SavedGame[]>(() => loadSavedGames());
@@ -1330,6 +1331,16 @@ export function ChessGame() {
         ctx.fillRect(x, y, SQ, SQ);
       }
 
+      // Colored square highlights (right-click planning) — AI mode only
+      if (gameMode === 'ai') {
+        const csKey = `${br},${bc}`;
+        const csColor = coloredSquares.get(csKey);
+        if (csColor) {
+          ctx.fillStyle = csColor;
+          ctx.fillRect(x, y, SQ, SQ);
+        }
+      }
+
       // Check highlight
       const sq = g.board[br][bc];
       if (sq?.type === 'K' && sq.color === g.turn && isInCheck(g.board, g.turn)) {
@@ -1419,10 +1430,12 @@ export function ChessGame() {
       });
     }
 
-    // Draw Arrows
-    arrows.forEach(a => {
-      drawArrow(ctx, a.from[0], a.from[1], a.to[0], a.to[1], flip, SQ, 'rgba(255,170,0,0.8)');
-    });
+    // Draw Arrows — AI mode only
+    if (gameMode === 'ai') {
+      arrows.forEach(a => {
+        drawArrow(ctx, a.from[0], a.from[1], a.to[0], a.to[1], flip, SQ, 'rgba(255,170,0,0.8)');
+      });
+    }
 
     // Coordinate labels (chess.com style — on square edges with contrast)
     const labelSize = Math.max(10, Math.round(SQ * 0.22));
@@ -1441,7 +1454,7 @@ export function ChessGame() {
       ctx.textAlign = 'left';
       ctx.fillText(rank, 3, i * SQ + labelSize + 2);
     }
-  }, [gs, flip, SQ, BOARD_PX, analysis, premoves, arrows, gameMode]);
+  }, [gs, flip, SQ, BOARD_PX, analysis, premoves, arrows, gameMode, coloredSquares]);
 
   // Pointer helpers
   const toBoardSq = useCallback((canvasX: number, canvasY: number): [number, number] | null => {
@@ -1824,7 +1837,7 @@ export function ChessGame() {
 
   const handlePointerDown = (e: React.MouseEvent | React.TouchEvent) => {
     const isRightClick = 'button' in e && e.button === 2;
-    if (!isRightClick && !('touches' in e)) setArrows([]); // Left click clears arrows
+    if (!isRightClick && !('touches' in e)) { setArrows([]); setColoredSquares(new Map()); } // Left click clears arrows + highlights
 
     const xy = getCanvasXY(e);
     if (!xy) return;
@@ -1834,7 +1847,7 @@ export function ChessGame() {
     const [r, c] = sq;
 
     if (isRightClick) {
-      arrowStartRef.current = [r, c];
+      if (gameMode === 'ai') arrowStartRef.current = [r, c];
       return;
     }
 
@@ -1885,6 +1898,17 @@ export function ChessGame() {
                 const next = [...prev]; next.splice(existingIdx, 1); return next;
               }
               return [...prev, { from: [sr, sc], to: [er, ec] }];
+            });
+          } else {
+            // Same square: cycle colored highlight (chess.com style)
+            const key = `${sr},${sc}`;
+            setColoredSquares(prev => {
+              const next = new Map(prev);
+              const cur = next.get(key);
+              if (!cur) next.set(key, 'rgba(235, 97, 80, 0.6)');            // 1st: orange-red
+              else if (cur === 'rgba(235, 97, 80, 0.6)') next.set(key, 'rgba(100, 190, 100, 0.6)'); // 2nd: green
+              else next.delete(key);                                          // 3rd: clear
+              return next;
             });
           }
         }
