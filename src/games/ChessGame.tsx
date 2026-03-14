@@ -1840,7 +1840,7 @@ export function ChessGame() {
 
   const handlePointerDown = (e: React.MouseEvent | React.TouchEvent) => {
     const isRightClick = 'button' in e && e.button === 2;
-    if (!isRightClick && !('touches' in e)) { setArrows([]); setColoredSquares(new Map()); } // Left click clears arrows + highlights
+
 
     const xy = getCanvasXY(e);
     if (!xy) return;
@@ -2633,6 +2633,12 @@ export function ChessGame() {
                     ✏️ {drawingMode ? 'Draw On' : 'Draw'}
                   </button>
                 )}
+                {gameMode === 'ai' && (arrows.length > 0 || coloredSquares.size > 0) && (
+                  <button onClick={() => { setArrows([]); setColoredSquares(new Map()); }}
+                    style={{ padding: '5px 8px', fontSize: 11, background: '#4a1010', color: '#ff8a80', border: '1px solid #7f2020', borderRadius: 4, cursor: 'pointer' }}>
+                    ✕ Clear
+                  </button>
+                )}
                 <button onClick={handleSave}
                   style={{ padding: '5px 8px', fontSize: 11, background: '#1e4d2b', color: '#ccc', border: '1px solid #2e7d32', borderRadius: 4, cursor: 'pointer' }}>
                   💾 Save
@@ -2730,6 +2736,12 @@ export function ChessGame() {
                 <button onClick={() => { const next = !drawingModeRef.current; drawingModeRef.current = next; setDrawingMode(next); }}
                   style={{ flex: 1, padding: '7px 2px', fontSize: 11, background: drawingMode ? '#6a0dad' : '#333', color: drawingMode ? '#fff' : '#ccc', border: `1px solid ${drawingMode ? '#9c27b0' : '#555'}`, borderRadius: 6, cursor: 'pointer' }}>
                   ✏️ {drawingMode ? 'Draw On' : 'Draw'}
+                </button>
+              )}
+              {gameMode === 'ai' && (arrows.length > 0 || coloredSquares.size > 0) && (
+                <button onClick={() => { setArrows([]); setColoredSquares(new Map()); }}
+                  style={{ flex: 1, padding: '7px 2px', fontSize: 11, background: '#4a1010', color: '#ff8a80', border: '1px solid #7f2020', borderRadius: 6, cursor: 'pointer' }}>
+                  ✕
                 </button>
               )}
               <button onClick={toggleAI}
