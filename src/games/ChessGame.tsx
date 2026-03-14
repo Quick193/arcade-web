@@ -1218,6 +1218,8 @@ export function ChessGame() {
   const [arrows, setArrows] = useState<{ from: [number, number], to: [number, number] }[]>([]);
   const [premoves, setPremoves] = useState<Premove[]>([]);
   const arrowStartRef = useRef<[number, number] | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTouchRef = useRef<{ sq: [number, number]; x: number; y: number } | null>(null);
   const [coloredSquares, setColoredSquares] = useState<Map<string, string>>(new Map());
 
   // Save/load state
@@ -1348,8 +1350,8 @@ export function ChessGame() {
         ctx.fillRect(x, y, SQ, SQ);
       }
 
-      // Legal move markers — only in player vs AI mode
-      if (gameMode === 'ai' && g.legalMoves.some(([lr, lc]) => lr === br && lc === bc)) {
+      // Legal move markers — both PvP and AI modes
+      if (g.legalMoves.some(([lr, lc]) => lr === br && lc === bc)) {
         if (g.board[br][bc]) {
           // Capture: semi-transparent green ring around the piece
           ctx.strokeStyle = 'rgba(30,180,60,0.75)';
@@ -1851,6 +1853,19 @@ export function ChessGame() {
       return;
     }
 
+    // Mobile long-press: after 320ms start arrow/highlight drawing mode (AI mode only)
+    if ('touches' in e && gameMode === 'ai') {
+      longPressTouchRef.current = { sq: [r, c], x: cx, y: cy };
+      longPressTimerRef.current = setTimeout(() => {
+        if (longPressTouchRef.current) {
+          arrowStartRef.current = longPressTouchRef.current.sq;
+          dragRef.current = null;
+          setGs(prev => ({ ...prev, selected: null, legalMoves: [] }));
+          if ('vibrate' in navigator) navigator.vibrate(30);
+        }
+      }, 320);
+    }
+
     const g = gsRef.current;
     if (g.gameResult || g.promotionPending) return;
     const interaction = getInteractionState(g);
@@ -1874,6 +1889,19 @@ export function ChessGame() {
   };
 
   const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
+    // Cancel long-press timer if finger moved more than 8px
+    if ('touches' in e && longPressTimerRef.current && longPressTouchRef.current) {
+      const xy2 = getCanvasXY(e);
+      if (xy2) {
+        const dx = xy2[0] - longPressTouchRef.current.x;
+        const dy = xy2[1] - longPressTouchRef.current.y;
+        if (dx * dx + dy * dy > 64) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+          longPressTouchRef.current = null;
+        }
+      }
+    }
     if (!dragRef.current) return;
     const xy = getCanvasXY(e);
     if (!xy) return;
@@ -1882,6 +1910,13 @@ export function ChessGame() {
   };
 
   const handlePointerUp = (e: React.MouseEvent | React.TouchEvent) => {
+    // Cancel any pending long-press timer
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    longPressTouchRef.current = null;
+
     const xy = getCanvasXY(e);
 
     // Handle Arrow Drawing end
