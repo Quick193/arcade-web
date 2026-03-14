@@ -1,7 +1,8 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useContext } from 'react';
 import { GameWrapper } from '../components/GameWrapper';
 import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
+import { GamePausedContext } from '../contexts/GamePausedContext';
 
 const EMOJIS = ['🎮','🎯','🎲','🎸','🎺','🎻','🎨','🎭','🎪','🎡','🎢','🎠'];
 
@@ -56,6 +57,9 @@ export function MemoryMatch() {
   const { isEnabled: aiDemoMode, isAdaptive, mode: demoMode, cycleMode, getAdaptiveDelay, getActionWeight, recordPlayerAction } = useAIDemo('memory');
   const aiDemoRef = useRef(aiDemoMode);
   const aiOnRef = useRef(aiDemoMode);
+  const isHubPaused = useContext(GamePausedContext);
+  const isHubPausedRef = useRef(false);
+  isHubPausedRef.current = isHubPaused;
   const demoLabel = demoMode === 'adaptive' ? '🧠 Learn Me' : aiDemoMode ? '🤖 Classic AI' : '🎮 Demo Off';
 
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
@@ -83,6 +87,7 @@ export function MemoryMatch() {
     const cards = makeCards(diff.pairs);
     setGs({ cards, flipped: [], matches: 0, attempts: 0, mismatches: 0, startTime: Date.now(), elapsed: 0, won: false, blocking: false, seen: new Map(), aiDisabled: false });
     timerRef.current = setInterval(() => {
+      if (isHubPausedRef.current) return;
       setGs(g => g && !g.won ? { ...g, elapsed: Math.floor((Date.now() - g.startTime) / 1000) } : g);
     }, 500);
   }, [stopTimers]);

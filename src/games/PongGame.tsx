@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useContext } from 'react';
 import { GameWrapper } from '../components/GameWrapper';
 import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
+import { GamePausedContext } from '../contexts/GamePausedContext';
 
 const W = 320, H = 480;
 const PADDLE_W = 10, PADDLE_H = 60;
@@ -59,6 +60,9 @@ export function PongGame() {
   const aiOnRef = useRef(aiDemoMode);
   aiOnRef.current = aiDemoMode;
   const demoLabel = demoMode === 'adaptive' ? '🧠 Learn Me' : aiDemoMode ? '🤖 Classic AI' : '🎮 Demo Off';
+  const isHubPaused = useContext(GamePausedContext);
+  const isHubPausedRef = useRef(false);
+  isHubPausedRef.current = isHubPaused;
 
   const initGame = useCallback((m: GameMode) => {
     setMode(m);
@@ -360,6 +364,11 @@ export function PongGame() {
     function gameLoop(ts: number) {
       const gs = gsRef.current;
       if (!gs) return;
+      if (isHubPausedRef.current) {
+        gs.lastTime = ts; // prevent dt spike on resume
+        rafRef.current = requestAnimationFrame(gameLoop);
+        return;
+      }
       const dt = Math.min(ts - gs.lastTime, 50);
       gs.lastTime = ts;
       update(dt);

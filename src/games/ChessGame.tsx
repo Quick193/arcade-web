@@ -1,7 +1,8 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo, useContext } from 'react';
 import { GameWrapper } from '../components/GameWrapper';
 import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
+import { GamePausedContext } from '../contexts/GamePausedContext';
 
 // ─── Types ────────────────────────────────────────────────────
 type Color = 'w' | 'b';
@@ -1188,6 +1189,9 @@ export function ChessGame() {
   const chessShowHints = state.settings.chessShowHints;
   const { isEnabled: aiDemoMode, isAdaptive, learning, mode: demoMode, cycleMode, getAdaptiveDelay, getActionWeight, recordPlayerAction } = useAIDemo('chess');
   const aiOnRef = useRef(aiDemoMode);
+  const isHubPaused = useContext(GamePausedContext);
+  const isHubPausedRef = useRef(false);
+  isHubPausedRef.current = isHubPaused;
   const demoLabel = demoMode === 'adaptive' ? '🧠 Learn Me' : aiDemoMode ? '🤖 Classic AI' : '🎮 Demo Off';
   const lastMoveSourceRef = useRef<'player' | 'ai' | 'premove' | null>(null);
 
@@ -1536,6 +1540,7 @@ export function ChessGame() {
   // Trigger AI when it's AI's turn
   useEffect(() => {
     if (!setup || gs.gameResult || gs.promotionPending) return;
+    if (isHubPaused) return; // Hub sheet is open — freeze AI moves
     // In human-vs-AI mode, pause the AI while waiting for the human to respond to a draw offer
     if (!aiDemoMode && gs.drawOffer !== 'none') return;
     const aiColor = gameMode === 'pvp' ? null : (playerColor === 'w' ? 'b' : 'w');
@@ -1543,7 +1548,7 @@ export function ChessGame() {
     if (shouldAI && !gs.aiDisabled) runAI(gs);
     return () => { if (aiTimerRef.current) clearTimeout(aiTimerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gs.turn, gs.gameResult, gs.promotionPending, gs.aiDisabled, gs.drawOffer, gameMode, playerColor, setup, runAI, aiDemoMode]);
+  }, [gs.turn, gs.gameResult, gs.promotionPending, gs.aiDisabled, gs.drawOffer, gameMode, playerColor, setup, runAI, aiDemoMode, isHubPaused]);
 
   useEffect(() => {
     if (!setup || !aiDemoMode) return;
@@ -1585,6 +1590,7 @@ export function ChessGame() {
   useEffect(() => {
     if (!pvpTimers || !setup || gameMode !== 'pvp' || gs.gameResult || gs.history.length === 0) return;
     const interval = setInterval(() => {
+      if (isHubPausedRef.current) return; // Hub sheet open — freeze clock
       setPvpTimers(prev => {
         if (!prev) return null;
         const turn = gsRef.current?.turn ?? 'w';

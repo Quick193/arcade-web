@@ -1,7 +1,8 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useContext } from 'react';
 import { GameWrapper } from '../components/GameWrapper';
 import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
+import { GamePausedContext } from '../contexts/GamePausedContext';
 
 type Grid = (number | 0)[][];
 type Notes = Set<number>[][]; // [row][col] = Set of pencil marks
@@ -216,6 +217,9 @@ export function SudokuGame() {
   const { recordGame, bestScore } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, mode: demoMode, cycleMode, getAdaptiveDelay, getActionWeight, recordPlayerAction } = useAIDemo('sudoku');
   const aiDemoRef = useRef(aiDemoMode);
+  const isHubPaused = useContext(GamePausedContext);
+  const isHubPausedRef = useRef(false);
+  isHubPausedRef.current = isHubPaused;
 
   const [diffIdx, setDiffIdx] = useState(0);
   const [configured, setConfigured] = useState(false);
@@ -248,6 +252,7 @@ export function SudokuGame() {
     startTimeRef.current = Date.now();
     setGs(initGs(dIdx));
     timerRef.current = setInterval(() => {
+      if (isHubPausedRef.current) return;
       setGs(g => g.won ? g : { ...g, elapsed: Math.floor((Date.now() - g.startTime) / 1000) });
     }, 500);
   }, [initGs]);

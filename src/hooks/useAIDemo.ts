@@ -48,8 +48,9 @@ export function useAIDemo(gameId: string): AIController {
   }, [mode, setMode]);
 
   const recordPlayerAction = useCallback((action: string, traits?: Partial<DemoLearningTraits>) => {
+    if (mode === 'classic') return; // Never learn from Classic AI sessions
     recordGameDemoAction(gameId, action, traits);
-  }, [gameId, recordGameDemoAction]);
+  }, [gameId, recordGameDemoAction, mode]);
 
   const getAdaptiveDelay = useCallback((baseMs: number, minFactor = 0.7, maxFactor = 1.35) => {
     if (mode !== 'adaptive') return baseMs;
@@ -76,6 +77,7 @@ export function useAIDemo(gameId: string): AIController {
 
   useEffect(() => {
     if (!gameId || gameId === '__global__') return;
+    if (mode === 'classic') return; // Don't track input while Classic AI is playing
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -98,7 +100,7 @@ export function useAIDemo(gameId: string): AIController {
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('touchstart', onTouchStart);
     };
-  }, [gameId, recordPlayerAction]);
+  }, [gameId, recordPlayerAction, mode]);
 
   return {
     mode,

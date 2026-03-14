@@ -224,7 +224,7 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
         className="flex-1 flex items-center justify-center overflow-hidden relative px-3 py-3"
       >
         {/* Provide pause state so useGameLoop freezes canvas loops while sheet is open */}
-        <GamePausedContext.Provider value={showExitConfirm}>
+        <GamePausedContext.Provider value={showExitConfirm || showDemoSheet}>
           {children}
         </GamePausedContext.Provider>
       </div>

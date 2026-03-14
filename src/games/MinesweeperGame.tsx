@@ -1,7 +1,8 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useContext } from 'react';
 import { GameWrapper } from '../components/GameWrapper';
 import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
+import { GamePausedContext } from '../contexts/GamePausedContext';
 
 type Difficulty = 'easy' | 'medium' | 'hard';
 type CellState = 'hidden' | 'revealed' | 'flagged';
@@ -163,6 +164,9 @@ export function MinesweeperGame() {
   const { isEnabled: aiDemoMode, getAdaptiveDelay, recordPlayerAction } = useAIDemo('minesweeper');
   const aiDemoRef = useRef(aiDemoMode);
   aiDemoRef.current = aiDemoMode;
+  const isHubPaused = useContext(GamePausedContext);
+  const isHubPausedRef = useRef(false);
+  isHubPausedRef.current = isHubPaused;
   const aiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(Date.now());
@@ -292,7 +296,7 @@ export function MinesweeperGame() {
   useEffect(() => {
     if (gs.gameState === 'playing') {
       if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = setInterval(() => setGs(g => g.gameState === 'playing' ? { ...g, time: g.time + 1 } : g), 1000);
+      timerRef.current = setInterval(() => { if (!isHubPausedRef.current) setGs(g => g.gameState === 'playing' ? { ...g, time: g.time + 1 } : g); }, 1000);
     } else {
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
