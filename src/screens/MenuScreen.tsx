@@ -32,11 +32,10 @@ export function MenuScreen() {
     .filter((entry) => entry.gamesPlayed > 0 && !hiddenSet.has(entry.game.id))
     .sort((a, b) => b.playedAt - a.playedAt);
 
-  // Continue Playing: only show game if session was abandoned mid-play (not completed)
-  const incompleteId = activeProfile.lastIncompleteGameId ?? null;
-  const incompleteGame = incompleteId ? (gamesById.get(incompleteId) ?? null) : null;
-  const continuePlaying = incompleteGame ? [incompleteGame] : [];
-  const latestGame = incompleteGame;
+  // Continue Playing: show all games abandoned mid-play (not completed)
+  const incompleteIds = activeProfile.incompleteGameIds ?? (activeProfile.lastIncompleteGameId ? [activeProfile.lastIncompleteGameId] : []);
+  const continuePlaying = incompleteIds.map(id => gamesById.get(id)).filter((g): g is GameMeta => Boolean(g));
+  const latestGame = continuePlaying[0] ?? null;
   const recentGames = recentlyPlayed.slice(0, 6).map((entry) => entry.game);
   const favoriteGames = activeProfile.favoriteGameIds
     .map((id) => gamesById.get(id))
@@ -137,7 +136,7 @@ export function MenuScreen() {
                   bestScore={activeProfile.stats[game.id]?.bestScore ?? 0}
                   favorite={favoriteIds.has(game.id)}
                   onFavorite={() => toggleFavoriteGame(game.id)}
-                  onDismiss={() => clearIncompleteGame()}
+                  onDismiss={() => clearIncompleteGame(game.id)}
                   onClick={() => navigate('game', game.id)}
                 />
               ))}

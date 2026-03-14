@@ -72,6 +72,7 @@ function makeDefaultProfile(name = 'Player', avatarColor = '#5c86ff'): Profile {
     createdAt: new Date().toISOString(),
     settings: { ...DEFAULT_SETTINGS },
     lastIncompleteGameId: null,
+    incompleteGameIds: [],
     hiddenFromRecents: [],
   };
 }
@@ -94,7 +95,7 @@ type Action =
   | { type: 'UPDATE_SETTINGS'; patch: Partial<Settings> }
   | { type: 'MARK_GAME_INCOMPLETE'; gameId: string }
   | { type: 'DISMISS_FROM_RECENTS'; gameId: string }
-  | { type: 'CLEAR_INCOMPLETE_GAME' }
+  | { type: 'CLEAR_INCOMPLETE_GAME'; gameId: string }
   | { type: 'PAUSE_GAME'; started: boolean }
   | { type: 'UNMOUNT_GAME'; gameId: string }
   | { type: 'UPDATE_PROFILE'; patch: Partial<PlayerProfile> }
@@ -130,7 +131,13 @@ function normalizeProfile(profile: Profile): Profile {
     gameDemoLearning: profile.gameDemoLearning ?? {},
     favoriteGameIds: profile.favoriteGameIds ?? [],
     settings: profile.settings ?? { ...DEFAULT_SETTINGS },
-    lastIncompleteGameId: profile.lastIncompleteGameId ?? null,
+    lastIncompleteGameId: null,
+    incompleteGameIds: (() => {
+      const existing = profile.incompleteGameIds ?? [];
+      const legacy = profile.lastIncompleteGameId;
+      if (legacy && !existing.includes(legacy)) return [...existing, legacy];
+      return existing;
+    })(),
     hiddenFromRecents: profile.hiddenFromRecents ?? [],
   };
 }
@@ -237,7 +244,7 @@ function reducer(state: AppState, action: Action): AppState {
       if (action.screen === 'game' && action.game) {
         const profile = getActiveProfile(state);
         const alreadyMounted = state.mountedGames.some(g => g.id === action.game);
-        const isResume = profile.lastIncompleteGameId === action.game && alreadyMounted;
+        const isResume = (profile.incompleteGameIds ?? []).includes(action.game!) && alreadyMounted;
 
         if (isResume) {
           // Resume paused game — keep same React instance (no remount, state preserved)
@@ -261,7 +268,7 @@ function reducer(state: AppState, action: Action): AppState {
         // Game was actually played — keep it mounted and mark as incomplete for Continue Playing
         return updateActiveProfile(
           { ...state, screen: 'menu' },
-          p => ({ ...p, lastIncompleteGameId: gameId })
+          p => ({ ...p, incompleteGameIds: [...(p.incompleteGameIds ?? []).filter(id => id !== gameId), gameId] })
         );
       }
       // Game was never started — just unmount it silently
@@ -284,7 +291,10 @@ function reducer(state: AppState, action: Action): AppState {
     }
 
     case 'MARK_GAME_INCOMPLETE':
-      return updateActiveProfile(state, p => ({ ...p, lastIncompleteGameId: action.gameId }));
+      return updateActiveProfile(state, p => ({
+        ...p,
+        incompleteGameIds: [...(p.incompleteGameIds ?? []).filter(id => id !== action.gameId), action.gameId],
+      }));
 
     case 'DISMISS_FROM_RECENTS':
       return updateActiveProfile(state, p => ({
@@ -293,11 +303,11 @@ function reducer(state: AppState, action: Action): AppState {
       }));
 
     case 'CLEAR_INCOMPLETE_GAME': {
-      const incompleteId = getActiveProfile(state).lastIncompleteGameId;
-      const mountedGames = incompleteId
-        ? state.mountedGames.filter(g => g.id !== incompleteId)
-        : state.mountedGames;
-      return updateActiveProfile({ ...state, mountedGames }, p => ({ ...p, lastIncompleteGameId: null }));
+      const mountedGames = state.mountedGames.filter(g => g.id !== action.gameId);
+      return updateActiveProfile({ ...state, mountedGames }, p => ({
+        ...p,
+        incompleteGameIds: (p.incompleteGameIds ?? []).filter(id => id !== action.gameId),
+      }));
     }
 
     case 'UPDATE_PROFILE':
@@ -403,7 +413,7 @@ function reducer(state: AppState, action: Action): AppState {
           firstPlay: global.firstPlay ?? now,
           lastPlay: now,
         },
-        lastIncompleteGameId: null,
+        incompleteGameIds: (profile.incompleteGameIds ?? []).filter(id => id !== action.gameId),
         hiddenFromRecents: (profile.hiddenFromRecents ?? []).filter(id => id !== action.gameId),
       };
       // Derive achievements from the already-updated profile (pure, no side-effects).
@@ -499,7 +509,7 @@ interface AppContextValue {
   /** Unmount a game immediately (without pause) and return to menu. */
   unmountGame: (gameId: string) => void;
   dismissFromRecents: (gameId: string) => void;
-  clearIncompleteGame: () => void;
+  clearIncompleteGame: (gameId: string) => void;
   activeProfile: Profile;
 }
 
@@ -639,8 +649,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const dismissFromRecents = useCallback((gameId: string) => {
     dispatch({ type: 'DISMISS_FROM_RECENTS', gameId });
   }, []);
-  const clearIncompleteGame = useCallback(() => {
-    dispatch({ type: 'CLEAR_INCOMPLETE_GAME' });
+  const clearIncompleteGame = useCallback((gameId: string) => {
+    dispatch({ type: 'CLEAR_INCOMPLETE_GAME', gameId });
   }, []);
 
   return (

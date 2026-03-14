@@ -78,7 +78,8 @@ export interface Profile {
   favoriteGameIds: string[];
   createdAt: string;
   settings?: Settings;
-  lastIncompleteGameId?: string | null;
+  lastIncompleteGameId?: string | null;  // legacy — migrated to incompleteGameIds on load
+  incompleteGameIds?: string[];
   hiddenFromRecents?: string[];
 }
 

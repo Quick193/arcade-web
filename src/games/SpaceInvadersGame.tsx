@@ -288,30 +288,17 @@ export function SpaceInvadersGame() {
     }
     px = gs.playerX + 14;
 
-    // Shield-aware shooting: find a clear lane or slide to one
-    const clearHere = canShootClear(gs, gs.playerX);
-    if (clearHere) {
-      if (px < tx - tolerance) gs.playerX = Math.min(W - 28, gs.playerX + moveSpeed);
-      else if (px > tx + tolerance) gs.playerX = Math.max(0, gs.playerX - moveSpeed);
-      if (Math.abs(gs.playerX + 14 - tx) < 10) shoot(false);
+    // Navigate toward target (always — primary movement)
+    if (px < tx - tolerance) gs.playerX = Math.min(W - 28, gs.playerX + moveSpeed);
+    else if (px > tx + tolerance) gs.playerX = Math.max(0, gs.playerX - moveSpeed);
+
+    // Shoot if current lane is clear; nudge 2px toward nearest gap if blocked
+    if (canShootClear(gs, gs.playerX)) {
+      shoot(false);
     } else {
-      // Scan ±80px for nearest clear-shot position
-      let clearX: number | null = null;
-      for (let off = 4; off <= 80; off += 4) {
-        const lx = gs.playerX - off;
-        const rx = gs.playerX + off;
-        if (lx >= 0 && canShootClear(gs, lx)) { clearX = lx; break; }
-        if (rx <= W - 28 && canShootClear(gs, rx)) { clearX = rx; break; }
-      }
-      if (clearX !== null) {
-        // Slide toward clear lane
-        gs.playerX += gs.playerX < clearX ? moveSpeed : -moveSpeed;
-        gs.playerX = Math.max(0, Math.min(W - 28, gs.playerX));
-      } else {
-        // All lanes blocked — shoot through shields, still chase target
-        if (px < tx - tolerance) gs.playerX = Math.min(W - 28, gs.playerX + moveSpeed);
-        else if (px > tx + tolerance) gs.playerX = Math.max(0, gs.playerX - moveSpeed);
-        if (Math.abs(gs.playerX + 14 - tx) < 10) shoot(false);
+      for (let off = 2; off <= 24; off += 2) {
+        if (gs.playerX - off >= 0 && canShootClear(gs, gs.playerX - off)) { gs.playerX = Math.max(0, gs.playerX - 2); break; }
+        if (gs.playerX + off <= W - 28 && canShootClear(gs, gs.playerX + off)) { gs.playerX = Math.min(W - 28, gs.playerX + 2); break; }
       }
     }
   }, [getActionWeight, getTraitValue, isAdaptive, shoot, startRun]);
@@ -578,9 +565,9 @@ export function SpaceInvadersGame() {
       controls={(
         <MobileControlBar
           items={[
-            { id: 'left', label: 'LEFT', onPress: () => { startRun(true); gsRef.current.keys.add('ArrowLeft'); recordPlayerAction('move:left', { precision: 0.62, tempo: 0.54 }); }, onRelease: () => gsRef.current.keys.delete('ArrowLeft') },
+            { id: 'left', label: 'LEFT', onPress: () => { startRun(true); gsRef.current.playerX = Math.max(0, gsRef.current.playerX - 20); recordPlayerAction('move:left', { precision: 0.62, tempo: 0.54 }); if (aiEnabledRef.current) gsRef.current.aiDisabled = true; } },
             { id: 'fire', label: 'FIRE', onPress: () => shoot(true), tone: 'danger' },
-            { id: 'right', label: 'RIGHT', onPress: () => { startRun(true); gsRef.current.keys.add('ArrowRight'); recordPlayerAction('move:right', { precision: 0.62, tempo: 0.54 }); }, onRelease: () => gsRef.current.keys.delete('ArrowRight') },
+            { id: 'right', label: 'RIGHT', onPress: () => { startRun(true); gsRef.current.playerX = Math.min(W - 28, gsRef.current.playerX + 20); recordPlayerAction('move:right', { precision: 0.62, tempo: 0.54 }); if (aiEnabledRef.current) gsRef.current.aiDisabled = true; } },
           ]}
           hint="Hold LEFT or RIGHT to slide the ship, tap FIRE to start or shoot. The shared overlay now handles the first launch and restarts."
         />

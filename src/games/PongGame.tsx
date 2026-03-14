@@ -388,7 +388,7 @@ export function PongGame() {
     };
     const onKeyUp = (e: KeyboardEvent) => { delete keys[e.key]; };
 
-    // Touch: split screen — left half controls P1, right half controls P2
+    // Touch: in 2p mode split left/right; in 1p/tournament entire canvas controls P1 only
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
       const gs = gsRef.current;
@@ -398,19 +398,18 @@ export function PongGame() {
         const touch = e.touches[i];
         const tx = (touch.clientX - rect.left) * (W / rect.width);
         const ty = (touch.clientY - rect.top) * (H / rect.height);
-        if (tx < W / 2) {
-          recordPlayerAction(ty < gs.p1y + PADDLE_H / 2 ? 'move:up' : 'move:down', { precision: 0.62, tempo: 0.54 });
-          // Left side -> P1
-          if (!aiOnRef.current || gs.aiDisabled) {
+        if (gs.mode === '2p') {
+          if (tx < W / 2) {
+            recordPlayerAction(ty < gs.p1y + PADDLE_H / 2 ? 'move:up' : 'move:down', { precision: 0.62, tempo: 0.54 });
             gs.p1y = Math.max(0, Math.min(H - PADDLE_H, ty - PADDLE_H / 2));
           } else {
-            // Disable AI when player touches left side
-            gs.aiDisabled = true;
-            gs.p1y = Math.max(0, Math.min(H - PADDLE_H, ty - PADDLE_H / 2));
+            gs.p2y = Math.max(0, Math.min(H - PADDLE_H, ty - PADDLE_H / 2));
           }
         } else {
-          // Right side -> P2
-          gs.p2y = Math.max(0, Math.min(H - PADDLE_H, ty - PADDLE_H / 2));
+          // 1p / tournament: entire canvas controls P1 only
+          recordPlayerAction(ty < gs.p1y + PADDLE_H / 2 ? 'move:up' : 'move:down', { precision: 0.62, tempo: 0.54 });
+          if (aiOnRef.current && !gs.aiDisabled) gs.aiDisabled = true;
+          gs.p1y = Math.max(0, Math.min(H - PADDLE_H, ty - PADDLE_H / 2));
         }
       }
     };

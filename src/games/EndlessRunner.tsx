@@ -12,7 +12,7 @@ import { useSfx } from '../hooks/useSfx';
 const W = 480;
 const H = 320;
 const GRAVITY = 0.5;
-const JUMP_POWER = -12.2;
+const JUMP_POWER = -9.0;
 const GROUND_Y = 260;
 const PLAYER_W = 24;
 const PLAYER_H = 32;
@@ -212,11 +212,11 @@ export function EndlessRunner() {
   const shootFireball = useCallback(() => {
     const gs = gsRef.current;
     if (!gs.alive || !gs.started) return;
-    if (gs.fireballCount <= 0) return;
+    if (gs.fireballCount <= 0 && gs.fireballTimer <= 0) return;
     const now = performance.now();
     if (now - gs.lastFireball < 350) return; // 350ms cooldown
     gs.lastFireball = now;
-    gs.fireballCount -= 1;
+    if (gs.fireballTimer <= 0) gs.fireballCount -= 1; // only consume count when timer is not active
     const worldX = gs.playerX + gs.worldX;
     gs.fireballs.push({ x: worldX + PLAYER_W + 4, y: gs.playerY + PLAYER_H / 2 - 5, vx: gs.speed + 12, phase: 0 });
     if (showParticlesRef.current) {
@@ -242,6 +242,19 @@ export function EndlessRunner() {
       if (showParticlesRef.current) {
         for (let index = 0; index < 10; index += 1) {
           gs.particles.push({ x: gs.playerX + gs.worldX + PLAYER_W / 2, y: gs.playerY + PLAYER_H / 2, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8, color: '#4488ff', life: 0.5, size: 5 });
+        }
+      }
+      return;
+    }
+    if (gs.fireballTimer > 0 || gs.fireballCount > 0) {
+      // Mario-style: losing fire power absorbs one hit
+      gs.fireballTimer = 0;
+      gs.fireballCount = 0;
+      gs.invincTimer = 1.5;
+      gs.stompChain = 0;
+      if (showParticlesRef.current) {
+        for (let index = 0; index < 8; index += 1) {
+          gs.particles.push({ x: gs.playerX + gs.worldX + PLAYER_W / 2, y: gs.playerY + PLAYER_H / 2, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6, color: index % 2 === 0 ? '#ff6600' : '#ffcc00', life: 0.5, size: 4 });
         }
       }
       return;
@@ -277,7 +290,7 @@ export function EndlessRunner() {
     gs.rightHeld = true; // always run right
 
     const px = gs.playerX + gs.worldX;
-    const lookAhead = gs.speed * (isAdaptive ? 18 + getTraitValue('precision') * 12 : 22) + px;
+    const lookAhead = gs.speed * (isAdaptive ? 18 + getTraitValue('precision') * 12 : 22) + 60 + px;
     let shouldJump = false;
 
     for (const spike of gs.spikes) {
@@ -482,7 +495,8 @@ export function EndlessRunner() {
     ctx.fillStyle = '#3344cc'; ctx.fillRect(px + 1, gs.playerY + 22, PLAYER_W - 2, 6);
     ctx.fillStyle = '#2233aa'; ctx.fillRect(px + 4, gs.playerY + 18, 4, 6); ctx.fillRect(px + PLAYER_W - 8, gs.playerY + 18, 4, 6);
     // Legs
-    const legPhase = Math.sin(gs.frame * 0.3);
+    const isRunning = gs.leftHeld || gs.rightHeld;
+    const legPhase = isRunning ? Math.sin(gs.frame * 0.3) : 0;
     ctx.fillStyle = '#3344cc';
     ctx.fillRect(px + 3, gs.playerY + PLAYER_H - 10, 7, 10 + legPhase * 3);
     ctx.fillRect(px + PLAYER_W - 10, gs.playerY + PLAYER_H - 10, 7, 10 - legPhase * 3);
@@ -572,7 +586,7 @@ export function EndlessRunner() {
 
       if (gs.jumpHeld && gs.playerVY < 0) {
         gs.jumpHeldTime += dt;
-        gs.playerVY += gs.jumpHeldTime < 0.28 ? GRAVITY * 0.38 : GRAVITY;
+        gs.playerVY += gs.jumpHeldTime < 0.18 ? GRAVITY * 0.4 : GRAVITY;
       } else {
         gs.playerVY += GRAVITY;
       }
@@ -681,7 +695,7 @@ export function EndlessRunner() {
       }
 
       gs.coins.forEach((coin) => {
-        if (!coin.collected && Math.hypot(coin.x - (playerRect.x + PLAYER_W / 2), coin.y - gs.playerY) < 20) {
+        if (!coin.collected && Math.hypot(coin.x - (playerRect.x + PLAYER_W / 2), coin.y - (gs.playerY + PLAYER_H / 2)) < 28) {
           coin.collected = true;
           recordPlayerAction('collect:coin', { exploration: 0.66, tempo: 0.58 });
           gs.coinsCollected += 1;
