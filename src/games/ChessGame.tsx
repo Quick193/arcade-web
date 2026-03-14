@@ -1337,16 +1337,18 @@ export function ChessGame() {
         ctx.fillRect(x, y, SQ, SQ);
       }
 
-      // Legal move markers
-      if (g.legalMoves.some(([lr, lc]) => lr === br && lc === bc)) {
+      // Legal move markers — only in player vs AI mode
+      if (gameMode === 'ai' && g.legalMoves.some(([lr, lc]) => lr === br && lc === bc)) {
         if (g.board[br][bc]) {
-          ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-          ctx.lineWidth = 3;
+          // Capture: semi-transparent green ring around the piece
+          ctx.strokeStyle = 'rgba(30,180,60,0.75)';
+          ctx.lineWidth = 4;
           ctx.strokeRect(x + 2, y + 2, SQ - 4, SQ - 4);
         } else {
-          ctx.fillStyle = 'rgba(0,0,0,0.2)';
+          // Empty square: bright green dot
+          ctx.fillStyle = 'rgba(30,180,60,0.5)';
           ctx.beginPath();
-          ctx.arc(x + SQ / 2, y + SQ / 2, SQ / 6, 0, Math.PI * 2);
+          ctx.arc(x + SQ / 2, y + SQ / 2, SQ / 4.5, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -1439,7 +1441,7 @@ export function ChessGame() {
       ctx.textAlign = 'left';
       ctx.fillText(rank, 3, i * SQ + labelSize + 2);
     }
-  }, [gs, flip, SQ, BOARD_PX, analysis, premoves, arrows]);
+  }, [gs, flip, SQ, BOARD_PX, analysis, premoves, arrows, gameMode]);
 
   // Pointer helpers
   const toBoardSq = useCallback((canvasX: number, canvasY: number): [number, number] | null => {

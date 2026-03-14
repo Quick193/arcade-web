@@ -121,7 +121,7 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
   }, [activeProfile.stats, gameId]);
 
   // Whether this game was previously paused (has saved state worth keeping)
-  const wasPreviouslyPaused = activeProfile.lastIncompleteGameId === gameId;
+  const wasPreviouslyPaused = gameId ? (activeProfile.incompleteGameIds ?? []).includes(gameId) : false;
 
   // Is this game the currently visible active game?
   const isActiveGame = state.screen === 'game' && state.activeGame === gameId;
