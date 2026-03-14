@@ -18,10 +18,8 @@ const PLAYER_H = 26;         // small Mario
 const PLAYER_H_BIG = 40;     // big/fire Mario
 const PLAYER_X_SCREEN = 80;  // player locked screen-x when camera scrolling
 const PLAYER_X_MIN = 16;
-const BASE_RUN_SPEED = 2.4;  // auto-run speed (px/frame)
-const SPRINT_SPEED = 3.8;    // right-held sprint
-const SLOW_SPEED = 0.8;      // left-held slow
-const REVERSE_SPEED = -1.0;  // left-held reverse when slow enough
+const RUN_SPEED = 3.5;       // right-held run (px/frame)
+const WALK_BACK_SPEED = 1.5; // left-held walk back (px/frame)
 const GRAVITY_FULL = 0.6;
 const GRAVITY_HOLD = 0.24;   // reduced gravity while holding jump + ascending
 const JUMP_VY = -12;
@@ -407,10 +405,12 @@ export function EndlessRunner() {
   const aiDecide = useCallback((gs: GS) => {
     if (!aiEnabledRef.current || gs.aiDisabled || !gs.alive) return;
     if (!gs.started) { gs.started = true; setPhase('playing'); }
-    gs.rightHeld = false;
+    gs.rightHeld = true;  // AI always runs right
     gs.leftHeld = false;
 
     const px = gs.playerWX;
+    const ph = gs.bigMario || gs.firepower ? PLAYER_H_BIG : PLAYER_H;
+    const pw = gs.bigMario || gs.firepower ? PLAYER_W + 4 : PLAYER_W;
     const lookahead = isAdaptive
       ? 80 + getTraitValue('precision') * 80
       : 140;
@@ -428,15 +428,17 @@ export function EndlessRunner() {
         if (e.x > px && e.x < px + lookahead) { shouldJump = true; break; }
       }
     }
-    // Jump over gaps
+    // Scan for gap ahead: check every 8px from front edge up to lookahead
     if (!shouldJump) {
-      let hasPlatformAhead = false;
-      for (const p of gs.platforms) {
-        if (p.x < px + 90 && p.x + p.w > px + PLAYER_W + 8 && p.y >= GROUND_Y - 4) {
-          hasPlatformAhead = true; break;
+      for (let scanX = px + pw + 4; scanX < px + pw + lookahead; scanX += 8) {
+        let groundHere = false;
+        for (const p of gs.platforms) {
+          if (scanX >= p.x && scanX <= p.x + p.w && p.y >= GROUND_Y - 4) {
+            groundHere = true; break;
+          }
         }
+        if (!groundHere) { shouldJump = true; break; }
       }
-      if (!hasPlatformAhead) shouldJump = true;
     }
 
     if (shouldJump && (gs.onGround || gs.coyoteTimer > 0)) {
@@ -670,7 +672,7 @@ export function EndlessRunner() {
     ctx.fillRect(px + 3, py + Math.round(17 * scale), Math.round(4 * scale), Math.round(5 * scale));
     ctx.fillRect(px + pw - Math.round(7 * scale), py + Math.round(17 * scale), Math.round(4 * scale), Math.round(5 * scale));
     // Legs
-    const moving = gs.leftHeld || gs.rightHeld;
+    const moving = (gs.leftHeld || gs.rightHeld) && gs.onGround;
     const legPhase = moving && gs.onGround ? Math.sin(gs.frame * 0.3) : 0;
     ctx.fillStyle = '#3344cc';
     ctx.fillRect(px + 2, py + ph - Math.round(9 * scale), Math.round(7 * scale), Math.round(9 * scale) + Math.round(legPhase * 3));
@@ -739,15 +741,10 @@ export function EndlessRunner() {
         }
       }
 
-      // ── Horizontal movement ──────────────────────────────────────────────────
-      let hSpeed: number;
-      if (gs.rightHeld) {
-        hSpeed = SPRINT_SPEED;
-      } else if (gs.leftHeld) {
-        hSpeed = SLOW_SPEED - BASE_RUN_SPEED; // net negative = slow/reverse
-      } else {
-        hSpeed = BASE_RUN_SPEED;
-      }
+      // ── Horizontal movement — only when keys held (classic Mario) ────────────
+      let hSpeed = 0;
+      if (gs.rightHeld) hSpeed = RUN_SPEED;
+      else if (gs.leftHeld) hSpeed = -WALK_BACK_SPEED;
       gs.playerWX += hSpeed;
 
       // ── Pipe horizontal collision (push back) ────────────────────────────────
@@ -1121,7 +1118,7 @@ export function EndlessRunner() {
             { id: 'right', label: '▶', onPress: handleRight, onRelease: handleRightRelease },
             { id: 'fire', label: 'FIRE', onPress: shootFireball, tone: 'danger' },
           ]}
-          hint="Auto-runs right · JUMP (hold = higher) · ◀ = slow/reverse · FIRE = fireball"
+          hint="▶ = run · ◀ = walk back · JUMP (hold = higher) · FIRE = fireball"
         />
       )}
     >
@@ -1141,7 +1138,7 @@ export function EndlessRunner() {
           eyebrow={phase === 'ready' ? 'Mario Run' : 'Run Ended'}
           title={phase === 'ready' ? 'Auto-runs right!' : 'Try again?'}
           subtitle={phase === 'ready'
-            ? 'Stomp Goombas, hit ? blocks from below for powerups!'
+            ? 'Hold ▶ to run! Stomp Goombas, hit ? blocks from below for powerups!'
             : 'Stomp Goombas · hit ? blocks · Fire Flower = shoot fireballs'}
           score={displayScore}
           best={best}
