@@ -132,27 +132,43 @@ export function FlappyGame() {
 
     const nextPipe = gs.pipes.find((pipe) => pipe.x + PIPE_W > gs.birdX - 5);
     if (!nextPipe) {
-      if (gs.birdY > H / 2) startRun(false);
+      // No pipe ahead — gently hold center height
+      if (gs.birdY > H * 0.55 && gs.birdVY >= 0) startRun(false);
       return;
     }
 
     const gapCenter = nextPipe.oscillating
       ? nextPipe.gapY + Math.sin(nextPipe.oscPhase) * 25
       : nextPipe.gapY;
+
+    const speed = PIPE_SPEED_BASE + Math.floor(gs.score / 15) * 0.25;
+    // Target the center of the pipe opening
+    const framesAway = Math.max(1, (nextPipe.x + PIPE_W * 0.5 - gs.birdX) / speed);
+    const simFrames = Math.min(framesAway, 80);
+
+    // Simulate trajectory WITHOUT flapping
     let simY = gs.birdY;
     let simVY = gs.birdVY;
-    const speed = PIPE_SPEED_BASE + Math.floor(gs.score / 15) * 0.25;
-    const framesAway = Math.max(1, (nextPipe.x - gs.birdX) / speed);
-    for (let index = 0; index < Math.min(framesAway, 60); index += 1) {
+    for (let i = 0; i < simFrames; i++) {
       simVY = Math.min(TERMINAL, simVY + GRAVITY);
       simY += simVY;
     }
 
-    const flapBias = getActionWeight('flap');
-    const risk = getTraitValue('risk');
-    const shouldFlap = simY > gapCenter + 15 - (flapBias - 1) * 8 + (risk - 0.5) * 10 || gs.birdVY > 1.5 + (risk - 0.5) * 0.8;
-    if (shouldFlap) startRun(false);
-  }, [getActionWeight, getTraitValue, startRun]);
+    // Simulate trajectory WITH an immediate flap
+    let simYFlap = gs.birdY;
+    let simVYFlap = FLAP_VY;
+    for (let i = 0; i < simFrames; i++) {
+      simVYFlap = Math.min(TERMINAL, simVYFlap + GRAVITY);
+      simYFlap += simVYFlap;
+    }
+
+    // Stay within the middle 55% of the gap; don't flap into the ceiling or top pipe
+    const margin = PIPE_GAP * 0.275;
+    const willBeTooLow = simY > gapCenter + margin;
+    const flapWouldOvershoot = simYFlap < gapCenter - margin || gs.birdY < 28;
+
+    if (willBeTooLow && !flapWouldOvershoot) startRun(false);
+  }, [startRun]);
 
   const render = useCallback((ctx: CanvasRenderingContext2D, gs: GS) => {
     const drawParallax = (layer: number, offset: number) => {

@@ -418,9 +418,6 @@ export function TetrisGame() {
     gs.aiActed = false;
   }, [spawnNext]);
 
-  const toggleTetrisAI = useCallback(() => {
-    cycleMode();
-  }, [cycleMode]);
 
   const startGame = useCallback((m: Mode) => {
     setMode(m);
@@ -735,18 +732,8 @@ export function TetrisGame() {
         />
       )}
     >
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+      <div style={{ position: 'relative' }}>
         <canvas ref={canvasRef} width={layout.CANVAS_W} height={layout.CANVAS_H} style={{ maxWidth: '100%', touchAction: 'none', display: 'block' }} />
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={toggleTetrisAI}
-            style={{ padding: '5px 14px', fontSize: 12, background: demoMode === 'adaptive' ? '#7b1fa2' : aiDemoMode ? '#0288d1' : '#333', color: '#fff', border: 'none', borderRadius: 16, cursor: 'pointer' }}>
-            {demoLabel}
-          </button>
-          <button onClick={() => { cancelAnimationFrame(rafRef.current); navigate('menu'); }}
-            style={{ padding: '5px 14px', fontSize: 12, background: '#555', color: '#fff', border: 'none', borderRadius: 16, cursor: 'pointer' }}>
-            Hub
-          </button>
-        </div>
         <GameOverlay
           visible={gamePhase === 'gameover'}
           eyebrow="Game Over"
