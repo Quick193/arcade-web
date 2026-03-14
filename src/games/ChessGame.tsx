@@ -1218,7 +1218,9 @@ export function ChessGame() {
   const [arrows, setArrows] = useState<{ from: [number, number], to: [number, number] }[]>([]);
   const [premoves, setPremoves] = useState<Premove[]>([]);
   const arrowStartRef = useRef<[number, number] | null>(null);
-  const [drawingMode, setDrawingMode] = useState(false); // mobile toggle for arrow/highlight drawing
+  const [drawingMode, setDrawingMode] = useState(false); // toggle for arrow/highlight drawing
+  const drawingModeRef = useRef(false);
+  drawingModeRef.current = drawingMode;
   const [coloredSquares, setColoredSquares] = useState<Map<string, string>>(new Map());
 
   // Save/load state
@@ -1848,12 +1850,12 @@ export function ChessGame() {
     const [r, c] = sq;
 
     if (isRightClick) {
-      if (gameMode === 'ai') arrowStartRef.current = [r, c];
+      if (gameMode === 'ai') arrowStartRef.current = [r, c]; // desktop right-click always works in AI mode
       return;
     }
 
-    // Drawing mode toggle: touch immediately enters arrow/highlight drawing (AI mode only)
-    if ('touches' in e && gameMode === 'ai' && drawingMode) {
+    // Drawing mode: any interaction starts arrow/highlight drawing (AI mode only)
+    if (gameMode === 'ai' && drawingModeRef.current) {
       arrowStartRef.current = [r, c];
       return;
     }
@@ -1985,6 +1987,7 @@ export function ChessGame() {
     // Left click canvas (for tap interface without dragging)
     const isRightClick = e.button === 2;
     if (isRightClick) return; // Right clicks handled by pointerDown/Up arrows logic
+    if (gameMode === 'ai' && drawingModeRef.current) return; // Drawing mode handles all interaction
 
     const xy = getCanvasXY(e);
     if (!xy) return;
@@ -2625,7 +2628,7 @@ export function ChessGame() {
                   </button>
                 )}
                 {gameMode === 'ai' && (
-                  <button onClick={() => setDrawingMode(m => !m)}
+                  <button onClick={() => { const next = !drawingModeRef.current; drawingModeRef.current = next; setDrawingMode(next); }}
                     style={{ padding: '5px 8px', fontSize: 11, background: drawingMode ? '#6a0dad' : '#333', color: drawingMode ? '#fff' : '#ccc', border: `1px solid ${drawingMode ? '#9c27b0' : '#555'}`, borderRadius: 4, cursor: 'pointer' }}>
                     ✏️ {drawingMode ? 'Draw On' : 'Draw'}
                   </button>
@@ -2724,7 +2727,7 @@ export function ChessGame() {
                 ↩ Undo
               </button>
               {gameMode === 'ai' && (
-                <button onClick={() => setDrawingMode(m => !m)}
+                <button onClick={() => { const next = !drawingModeRef.current; drawingModeRef.current = next; setDrawingMode(next); }}
                   style={{ flex: 1, padding: '7px 2px', fontSize: 11, background: drawingMode ? '#6a0dad' : '#333', color: drawingMode ? '#fff' : '#ccc', border: `1px solid ${drawingMode ? '#9c27b0' : '#555'}`, borderRadius: 6, cursor: 'pointer' }}>
                   ✏️ {drawingMode ? 'Draw On' : 'Draw'}
                 </button>
