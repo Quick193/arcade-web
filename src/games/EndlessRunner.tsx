@@ -11,56 +11,71 @@ import { useSfx } from '../hooks/useSfx';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const W = 480;
-const H = 320;
-const GRAVITY = 0.5;
-const JUMP_POWER = -9.5;
-const GROUND_Y = 260;        // top of the ground surface
-const PLAYER_W = 22;
-const PLAYER_H = 28;         // small Mario height
-const PLAYER_H_BIG = 42;     // big Mario height
-const PLAYER_X_DEFAULT = 72;
-const PLAYER_X_MIN = 18;
-const CAMERA_RIGHT = 200;    // player screen-x where camera locks and world scrolls
-const MOVE_SPEED = 3.0;
+const H = 300;
+const GROUND_Y = 252;        // top of the ground surface
+const PLAYER_W = 20;
+const PLAYER_H = 26;         // small Mario
+const PLAYER_H_BIG = 40;     // big/fire Mario
+const PLAYER_X_SCREEN = 80;  // player locked screen-x when camera scrolling
+const PLAYER_X_MIN = 16;
+const BASE_RUN_SPEED = 2.4;  // auto-run speed (px/frame)
+const SPRINT_SPEED = 3.8;    // right-held sprint
+const SLOW_SPEED = 0.8;      // left-held slow
+const REVERSE_SPEED = -1.0;  // left-held reverse when slow enough
+const GRAVITY_FULL = 0.6;
+const GRAVITY_HOLD = 0.24;   // reduced gravity while holding jump + ascending
+const JUMP_VY = -12;
+const JUMP_HOLD_MAX = 0.22;  // seconds of hold benefit
+const FALL_CAP = 14;
+const COYOTE_TIME = 0.10;    // seconds
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface Platform { x: number; y: number; w: number; h: number }
-interface Enemy    { x: number; y: number; w: number; h: number; vx: number; alive: boolean; flat: boolean }
+interface Platform { x: number; y: number; w: number; h: number; brick?: boolean }
 interface Pipe     { x: number; y: number; w: number; h: number }
+interface Enemy    {
+  id: number; x: number; y: number; w: number; h: number;
+  vx: number; alive: boolean; flat: boolean; flatTimer: number;
+}
 interface Coin     { x: number; y: number; collected: boolean }
-interface QBlock   { x: number; y: number; used: boolean; hitAnim: number; item: 'mushroom' | 'fireball' | 'star' | 'coin' }
-interface Fireball { x: number; y: number; vx: number; vy: number }
+interface QBlock   {
+  x: number; y: number; used: boolean; hitAnim: number;
+  item: 'coin' | 'mushroom' | 'fire' | 'star';
+}
+interface Fireball { x: number; y: number; vx: number; vy: number; dead: boolean }
 interface Particle { x: number; y: number; vx: number; vy: number; color: string; life: number }
 
 interface GS {
-  // Player
-  playerX: number;   // screen-space
+  // Player world coords
+  playerWX: number;  // world-x of player left edge
   playerY: number;
-  playerVY: number;
+  vy: number;
   onGround: boolean;
+  wasOnGround: boolean;
   coyoteTimer: number;
   jumpHeld: boolean;
   jumpHeldTime: number;
   jumpQueued: boolean;
   leftHeld: boolean;
   rightHeld: boolean;
-  // Powers
+  // Camera
+  camX: number;      // world-x of left edge of screen
+  // Power state
   bigMario: boolean;
   firepower: boolean;
-  starTimer: number;   // invincibility star seconds remaining
-  invincTimer: number; // brief post-hit invincibility
+  starTimer: number;
+  invincTimer: number;
   // Projectiles
   fireballs: Fireball[];
-  lastFireball: number;
-  // World
-  worldX: number;     // camera offset
+  lastFireballTime: number;
+  // World objects
   platforms: Platform[];
-  enemies: Enemy[];
   pipes: Pipe[];
+  enemies: Enemy[];
   coins: Coin[];
   qblocks: QBlock[];
   particles: Particle[];
-  spawnEdge: number;  // world-x of rightmost spawned terrain
+  spawnEdge: number;  // world-x of rightmost generated terrain
+  nextEnemyId: number;
   // Progress
   score: number;
   coinsCollected: number;
@@ -69,36 +84,39 @@ interface GS {
   started: boolean;
   frame: number;
   stompChain: number;
-  aiDisabled: boolean;
   bestSession: number;
+  aiDisabled: boolean;
+  chunksSpawned: number;
 }
 
 function initGs(): GS {
-  return {
-    playerX: PLAYER_X_DEFAULT,
+  const gs: GS = {
+    playerWX: 60,
     playerY: GROUND_Y - PLAYER_H,
-    playerVY: 0,
+    vy: 0,
     onGround: true,
+    wasOnGround: true,
     coyoteTimer: 0,
     jumpHeld: false,
     jumpHeldTime: 0,
     jumpQueued: false,
     leftHeld: false,
     rightHeld: false,
+    camX: 0,
     bigMario: false,
     firepower: false,
     starTimer: 0,
     invincTimer: 0,
     fireballs: [],
-    lastFireball: 0,
-    worldX: 0,
-    platforms: [{ x: 0, y: GROUND_Y, w: W * 3, h: H - GROUND_Y }],
-    enemies: [],
+    lastFireballTime: 0,
+    platforms: [],
     pipes: [],
+    enemies: [],
     coins: [],
     qblocks: [],
     particles: [],
-    spawnEdge: W * 3,
+    spawnEdge: 0,
+    nextEnemyId: 1,
     score: 0,
     coinsCollected: 0,
     lives: 3,
@@ -106,118 +124,150 @@ function initGs(): GS {
     started: false,
     frame: 0,
     stompChain: 0,
-    aiDisabled: false,
     bestSession: 0,
+    aiDisabled: false,
+    chunksSpawned: 0,
   };
+  // Pre-spawn first 3 safe plain chunks
+  spawnChunk(gs, 'plain');
+  spawnChunk(gs, 'plain');
+  spawnChunk(gs, 'plain');
+  return gs;
 }
 
 // ─── Level Generation ─────────────────────────────────────────────────────────
-// Every chunk ALWAYS extends the ground first, then stacks features on top.
-function spawnChunk(gs: GS) {
+type ChunkType = 'plain' | 'coins' | 'pipes' | 'goombas' | 'qblocks' | 'elevated' | 'gap';
+
+function spawnChunk(gs: GS, forceType?: ChunkType) {
   const x = gs.spawnEdge;
-  const difficulty = Math.min(1, gs.score / 3000);
-  const r = Math.random();
+  const difficulty = Math.min(1, gs.score / 4000);
+  gs.chunksSpawned++;
 
-  if (r < 0.15) {
-    // Plain recovery stretch — just ground, maybe a few coins
-    const w = 300 + Math.random() * 100;
-    gs.platforms.push({ x, y: GROUND_Y, w, h: H - GROUND_Y });
-    const cCount = 3 + Math.floor(Math.random() * 4);
-    for (let i = 0; i < cCount; i++)
-      gs.coins.push({ x: x + 40 + i * 36, y: GROUND_Y - 52, collected: false });
-    gs.spawnEdge = x + w;
+  const typeRoll = Math.random();
+  let type: ChunkType;
+  if (forceType) {
+    type = forceType;
+  } else if (typeRoll < 0.14) {
+    type = 'plain';
+  } else if (typeRoll < 0.28) {
+    type = 'coins';
+  } else if (typeRoll < 0.42) {
+    type = 'pipes';
+  } else if (typeRoll < 0.56) {
+    type = 'goombas';
+  } else if (typeRoll < 0.70) {
+    type = 'qblocks';
+  } else if (typeRoll < 0.84) {
+    type = 'elevated';
+  } else {
+    type = 'gap';
+  }
 
-  } else if (r < 0.30) {
-    // Coin arc — classic Mario 5-coin row at jump height
-    const w = 380;
+  if (type === 'plain') {
+    const w = 280 + Math.random() * 120;
     gs.platforms.push({ x, y: GROUND_Y, w, h: H - GROUND_Y });
-    const coinCount = 5 + Math.floor(Math.random() * 4);
-    for (let i = 0; i < coinCount; i++)
-      gs.coins.push({ x: x + 50 + i * 30, y: GROUND_Y - 65, collected: false });
-    gs.spawnEdge = x + w;
-
-  } else if (r < 0.45) {
-    // Pipe(s) — 1–3 green pipes of varied height
-    const w = 420;
-    gs.platforms.push({ x, y: GROUND_Y, w, h: H - GROUND_Y });
-    const pipeCount = 1 + Math.floor(Math.random() * (difficulty > 0.4 ? 3 : 2));
-    for (let i = 0; i < pipeCount; i++) {
-      const ph = 28 + Math.random() * 32;
-      gs.pipes.push({ x: x + 60 + i * 90, y: GROUND_Y - ph, w: 30, h: ph });
+    const cnt = 4 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < cnt; i++) {
+      gs.coins.push({ x: x + 40 + i * 32, y: GROUND_Y - 56, collected: false });
     }
     gs.spawnEdge = x + w;
 
-  } else if (r < 0.60) {
-    // Goombas — 1–3 enemies, with coins above them
-    const w = 400;
+  } else if (type === 'coins') {
+    const w = 320 + Math.random() * 80;
     gs.platforms.push({ x, y: GROUND_Y, w, h: H - GROUND_Y });
-    const eCount = 1 + Math.floor(Math.random() * 2 + difficulty * 1.5);
-    for (let i = 0; i < Math.min(eCount, 3); i++) {
-      const ex = x + 70 + i * 100;
-      gs.enemies.push({ x: ex, y: GROUND_Y - 24, w: 22, h: 24, vx: -(0.9 + difficulty * 0.6), alive: true, flat: false });
-      gs.coins.push({ x: ex + 11, y: GROUND_Y - 62, collected: false });
+    const cnt = 7 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < cnt; i++) {
+      gs.coins.push({ x: x + 30 + i * 28, y: GROUND_Y - 70, collected: false });
     }
     gs.spawnEdge = x + w;
 
-  } else if (r < 0.72) {
-    // ? blocks — 1–3 floating blocks with items, coin arcs below
-    const w = 380;
+  } else if (type === 'pipes') {
+    const w = 380 + Math.random() * 70;
     gs.platforms.push({ x, y: GROUND_Y, w, h: H - GROUND_Y });
-    const bCount = 1 + Math.floor(Math.random() * 3);
-    const items: QBlock['item'][] = ['coin', 'coin', 'coin', 'mushroom', 'fireball', 'star'];
-    for (let i = 0; i < bCount; i++) {
-      const bx = x + 60 + i * 90;
-      gs.qblocks.push({ x: bx, y: GROUND_Y - 80, used: false, hitAnim: 0, item: items[Math.floor(Math.random() * items.length)] });
-      // Coin arc in front of the block
-      for (let j = 0; j < 3; j++)
-        gs.coins.push({ x: bx + 20 + j * 28, y: GROUND_Y - 52, collected: false });
+    const cnt = 1 + Math.floor(Math.random() * (difficulty > 0.4 ? 3 : 2));
+    for (let i = 0; i < cnt; i++) {
+      const ph = 40 + Math.random() * 30;
+      gs.pipes.push({ x: x + 55 + i * 95, y: GROUND_Y - ph, w: 32, h: ph });
     }
     gs.spawnEdge = x + w;
 
-  } else if (r < 0.84) {
-    // Floating platform section — elevated platform with coins/? block on top
-    const w = 400;
+  } else if (type === 'goombas') {
+    const w = 380 + Math.random() * 70;
     gs.platforms.push({ x, y: GROUND_Y, w, h: H - GROUND_Y });
-    const platY = GROUND_Y - 75 - Math.random() * 20;
+    const cnt = Math.min(4, 2 + Math.floor(Math.random() * 3 * difficulty + 1));
+    for (let i = 0; i < cnt; i++) {
+      const ex = x + 60 + i * 90;
+      const speed = 0.9 + Math.random() * 0.6;
+      gs.enemies.push({
+        id: gs.nextEnemyId++,
+        x: ex, y: GROUND_Y - 24, w: 22, h: 24,
+        vx: -speed, alive: true, flat: false, flatTimer: 0,
+      });
+    }
+    gs.spawnEdge = x + w;
+
+  } else if (type === 'qblocks') {
+    const w = 340 + Math.random() * 80;
+    gs.platforms.push({ x, y: GROUND_Y, w, h: H - GROUND_Y });
+    const cnt = 2 + Math.floor(Math.random() * 3);
+    const items: QBlock['item'][] = ['coin', 'coin', 'coin', 'mushroom', 'fire', 'star'];
+    for (let i = 0; i < cnt; i++) {
+      const bx = x + 50 + i * 90;
+      gs.qblocks.push({
+        x: bx, y: GROUND_Y - 90,
+        used: false, hitAnim: 0,
+        item: items[Math.floor(Math.random() * items.length)],
+      });
+    }
+    gs.spawnEdge = x + w;
+
+  } else if (type === 'elevated') {
+    const w = 380 + Math.random() * 70;
+    gs.platforms.push({ x, y: GROUND_Y, w, h: H - GROUND_Y });
+    const platY = GROUND_Y - 80 - Math.random() * 15;
     const platW = 80 + Math.random() * 60;
-    gs.platforms.push({ x: x + 100, y: platY, w: platW, h: 14 });
-    for (let i = 0; i < 3; i++)
-      gs.coins.push({ x: x + 115 + i * 24, y: platY - 28, collected: false });
+    gs.platforms.push({ x: x + 90, y: platY, w: platW, h: 14, brick: true });
+    for (let i = 0; i < 3; i++) {
+      gs.coins.push({ x: x + 100 + i * 28, y: platY - 24, collected: false });
+    }
     if (Math.random() < 0.5) {
-      const items: QBlock['item'][] = ['mushroom', 'coin', 'fireball'];
-      gs.qblocks.push({ x: x + 180, y: platY - 30, used: false, hitAnim: 0, item: items[Math.floor(Math.random() * items.length)] });
+      const items: QBlock['item'][] = ['mushroom', 'coin', 'fire'];
+      gs.qblocks.push({
+        x: x + 100 + 3 * 28 + 10, y: platY - 26,
+        used: false, hitAnim: 0,
+        item: items[Math.floor(Math.random() * items.length)],
+      });
     }
     gs.spawnEdge = x + w;
 
   } else {
-    // Gap — short pit, always preceded by enough ground to jump from and safe landing
-    const runupW = 100 + Math.random() * 40;
-    const gapW = 40 + Math.random() * 28 + difficulty * 20;
-    const landW = 180 + Math.random() * 60;
-    // Runup ground
+    // gap
+    const runupW = 120;
+    const gapW = Math.min(80, 50 + Math.random() * 30 + difficulty * 20);
+    const landW = 200 + Math.random() * 80;
     gs.platforms.push({ x, y: GROUND_Y, w: runupW, h: H - GROUND_Y });
-    // Landing ground
     gs.platforms.push({ x: x + runupW + gapW, y: GROUND_Y, w: landW, h: H - GROUND_Y });
-    // Optional safety platform above the gap
-    if (Math.random() < 0.6) {
-      gs.platforms.push({ x: x + runupW + gapW / 2 - 24, y: GROUND_Y - 68, w: 48, h: 12 });
+    // Optional bridge platform above gap center
+    if (Math.random() < 0.55) {
+      gs.platforms.push({
+        x: x + runupW + gapW / 2 - 26, y: GROUND_Y - 72, w: 52, h: 12, brick: true,
+      });
     }
-    // Coins on the landing
-    for (let i = 0; i < 3; i++)
-      gs.coins.push({ x: x + runupW + gapW + 20 + i * 30, y: GROUND_Y - 52, collected: false });
+    for (let i = 0; i < 3; i++) {
+      gs.coins.push({ x: x + runupW + gapW + 20 + i * 28, y: GROUND_Y - 52, collected: false });
+    }
     gs.spawnEdge = x + runupW + gapW + landW;
   }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-function rectsOverlap(
+function rOvlp(
   ax: number, ay: number, aw: number, ah: number,
   bx: number, by: number, bw: number, bh: number,
 ): boolean {
-  return ax < bx + bw - 3 && ax + aw > bx + 3 && ay < by + bh - 3 && ay + ah > by + 3;
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
 
-// ─── Drawing helpers ─────────────────────────────────────────────────────────
 function drawCloud(ctx: CanvasRenderingContext2D, cx: number, cy: number, rx: number, ry: number) {
   ctx.fillStyle = '#fff';
   ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
@@ -228,7 +278,7 @@ function drawCloud(ctx: CanvasRenderingContext2D, cx: number, cy: number, rx: nu
 // ─── Component ───────────────────────────────────────────────────────────────
 export function EndlessRunner() {
   const { recordGame, bestScore, navigate, state } = useApp();
-  const { isEnabled: aiDemoMode, isAdaptive, getActionWeight, getTraitValue, recordPlayerAction } = useAIDemo('runner');
+  const { isEnabled: aiDemoMode, isAdaptive, getTraitValue, recordPlayerAction } = useAIDemo('runner');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const gsRef = useRef<GS>(initGs());
@@ -282,13 +332,22 @@ export function EndlessRunner() {
     const gs = gsRef.current;
     if (!gs.alive || !gs.started || !gs.firepower) return;
     const now = performance.now();
-    if (now - gs.lastFireball < 380) return;
-    gs.lastFireball = now;
-    const wx = gs.playerX + gs.worldX;
-    gs.fireballs.push({ x: wx + PLAYER_W + 2, y: gs.playerY + PLAYER_H / 2, vx: 11, vy: -3 });
+    if (now - gs.lastFireballTime < 400) return;
+    gs.lastFireballTime = now;
+    gs.fireballs.push({
+      x: gs.playerWX + PLAYER_W + 2,
+      y: gs.playerY + (gs.bigMario || gs.firepower ? PLAYER_H_BIG : PLAYER_H) / 2,
+      vx: 11, vy: -3, dead: false,
+    });
     if (showParticlesRef.current) {
-      for (let i = 0; i < 5; i++)
-        gs.particles.push({ x: wx + PLAYER_W, y: gs.playerY + PLAYER_H / 2, vx: 4 + Math.random() * 4, vy: (Math.random() - 0.5) * 3, color: i % 2 ? '#ff6600' : '#ffcc00', life: 0.4 });
+      for (let i = 0; i < 5; i++) {
+        gs.particles.push({
+          x: gs.playerWX + PLAYER_W,
+          y: gs.playerY + (gs.bigMario || gs.firepower ? PLAYER_H_BIG : PLAYER_H) / 2,
+          vx: 4 + Math.random() * 4, vy: (Math.random() - 0.5) * 3,
+          color: i % 2 ? '#ff6600' : '#ffcc00', life: 0.4,
+        });
+      }
     }
     recordPlayerAction('shoot', { aggression: 0.8, precision: 0.6 });
   }, [recordPlayerAction]);
@@ -301,13 +360,11 @@ export function EndlessRunner() {
     setDisplayScore(gs.score);
   }, [recordGame]);
 
-  // ── takeDamage: shield layers in Mario order ────────────────────────────────
   const takeDamage = useCallback((gs: GS) => {
     if (gs.invincTimer > 0 || gs.starTimer > 0) return;
-
     if (gs.firepower) {
       gs.firepower = false;
-      gs.bigMario = true; // fire → big (same as SMB)
+      gs.bigMario = true;
       gs.invincTimer = 1.8;
       return;
     }
@@ -315,12 +372,16 @@ export function EndlessRunner() {
       gs.bigMario = false;
       gs.invincTimer = 1.8;
       if (showParticlesRef.current) {
-        for (let i = 0; i < 8; i++)
-          gs.particles.push({ x: gs.playerX + gs.worldX + PLAYER_W / 2, y: gs.playerY + PLAYER_H / 2, vx: (Math.random() - 0.5) * 5, vy: -2 - Math.random() * 3, color: i % 2 ? '#e52222' : '#f5c48a', life: 0.5 });
+        for (let i = 0; i < 8; i++) {
+          gs.particles.push({
+            x: gs.playerWX + PLAYER_W / 2, y: gs.playerY + PLAYER_H / 2,
+            vx: (Math.random() - 0.5) * 5, vy: -2 - Math.random() * 3,
+            color: i % 2 ? '#e52222' : '#f5c48a', life: 0.5,
+          });
+        }
       }
       return;
     }
-    // Small Mario — lose a life
     gs.lives -= 1;
     gs.stompChain = 0;
     gs.invincTimer = 2.2;
@@ -329,8 +390,9 @@ export function EndlessRunner() {
       finishRun(gs);
       return;
     }
+    // Respawn on ground
     gs.playerY = GROUND_Y - PLAYER_H;
-    gs.playerVY = 0;
+    gs.vy = 0;
     gs.onGround = true;
   }, [finishRun]);
 
@@ -345,235 +407,309 @@ export function EndlessRunner() {
   const aiDecide = useCallback((gs: GS) => {
     if (!aiEnabledRef.current || gs.aiDisabled || !gs.alive) return;
     if (!gs.started) { gs.started = true; setPhase('playing'); }
-    gs.rightHeld = true;
+    gs.rightHeld = false;
+    gs.leftHeld = false;
 
-    const px = gs.playerX + gs.worldX;
-    const lookahead = Math.max(100, (isAdaptive ? 18 + getTraitValue('precision') * 12 : 22) * 3 + 60);
+    const px = gs.playerWX;
+    const lookahead = isAdaptive
+      ? 80 + getTraitValue('precision') * 80
+      : 140;
 
     let shouldJump = false;
+
+    // Jump over pipes
     for (const pipe of gs.pipes) {
       if (pipe.x > px && pipe.x < px + lookahead) { shouldJump = true; break; }
     }
+    // Jump over/onto enemies
     if (!shouldJump) {
       for (const e of gs.enemies) {
         if (!e.alive || e.flat) continue;
-        if (e.x > px && e.x < px + lookahead && Math.abs(e.y - gs.playerY) < 40) { shouldJump = true; break; }
+        if (e.x > px && e.x < px + lookahead) { shouldJump = true; break; }
       }
     }
     // Jump over gaps
     if (!shouldJump) {
-      let hasPlatform = false;
+      let hasPlatformAhead = false;
       for (const p of gs.platforms) {
-        if (p.x < px + 80 && p.x + p.w > px + 16 && p.y >= GROUND_Y - 2) { hasPlatform = true; break; }
+        if (p.x < px + 90 && p.x + p.w > px + PLAYER_W + 8 && p.y >= GROUND_Y - 4) {
+          hasPlatformAhead = true; break;
+        }
       }
-      if (!hasPlatform) shouldJump = true;
+      if (!hasPlatformAhead) shouldJump = true;
     }
-    gs.jumpQueued = shouldJump && (gs.onGround || gs.coyoteTimer > 0);
+
+    if (shouldJump && (gs.onGround || gs.coyoteTimer > 0)) {
+      gs.jumpQueued = true;
+      gs.jumpHeld = true;
+    } else if (!shouldJump) {
+      gs.jumpHeld = false;
+    }
 
     if (gs.firepower) {
       for (const e of gs.enemies) {
         if (!e.alive || e.flat) continue;
-        if (e.x > px && e.x < px + 250) { shootFireball(); break; }
+        if (e.x > px && e.x < px + 260) { shootFireball(); break; }
       }
     }
   }, [getTraitValue, isAdaptive, shootFireball]);
 
   // ── Draw ─────────────────────────────────────────────────────────────────────
   const draw = useCallback((ctx: CanvasRenderingContext2D, gs: GS, ts: number) => {
-    // Sky
+    // Sky gradient
     ctx.fillStyle = '#5c94fc';
     ctx.fillRect(0, 0, W, H);
 
-    // Clouds (parallax)
-    const cloudOff = (gs.worldX * 0.14) % (W + 120);
-    const clouds = [{ ox: 60, oy: 38, rx: 32, ry: 16 }, { ox: 210, oy: 26, rx: 24, ry: 12 }, { ox: 360, oy: 50, rx: 28, ry: 14 }, { ox: 500, oy: 34, rx: 36, ry: 18 }];
-    clouds.forEach(({ ox, oy, rx, ry }) => {
-      const cx = ((ox - cloudOff % (W + 120) + W + 120) % (W + 120)) - 60;
+    // Parallax clouds
+    const CLOUD_DEFS = [
+      { ox: 60, oy: 38, rx: 32, ry: 16 },
+      { ox: 220, oy: 26, rx: 24, ry: 12 },
+      { ox: 370, oy: 50, rx: 28, ry: 14 },
+      { ox: 510, oy: 34, rx: 36, ry: 18 },
+      { ox: 140, oy: 60, rx: 20, ry: 10 },
+    ];
+    const CLOUD_SCROLL = W + 140;
+    const cloudOff = (gs.camX * 0.13) % CLOUD_SCROLL;
+    for (const { ox, oy, rx, ry } of CLOUD_DEFS) {
+      const cx = ((ox - cloudOff + CLOUD_SCROLL * 4) % CLOUD_SCROLL) - 40;
       drawCloud(ctx, cx, oy, rx, ry);
-    });
+    }
 
-    const camX = -gs.worldX;
+    // World-space transform
+    const offX = -gs.camX;
     ctx.save();
-    ctx.translate(camX, 0);
+    ctx.translate(offX, 0);
 
-    // Ground / platforms
-    gs.platforms.forEach(p => {
-      if (p.x + p.w < gs.worldX - 50 || p.x > gs.worldX + W + 50) return;
+    const vLeft = gs.camX - 60;
+    const vRight = gs.camX + W + 60;
+
+    // Platforms
+    for (const p of gs.platforms) {
+      if (p.x + p.w < vLeft || p.x > vRight) continue;
       if (p.h > 20) {
-        // Ground brick
-        ctx.fillStyle = '#8b5e3c'; ctx.fillRect(p.x, p.y, p.w, p.h);
+        // Ground: brown fill + grass top
+        ctx.fillStyle = '#8b5e3c';
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+        // Brick lines
         ctx.strokeStyle = '#6b4020'; ctx.lineWidth = 1;
         const bH = 12; const bW = 24;
         for (let row = 0; row * bH < p.h; row++) {
-          const offX = row % 2 === 0 ? 0 : bW / 2;
-          for (let col = -1; col * bW < p.w + bW; col++) ctx.strokeRect(p.x + col * bW + offX, p.y + row * bH, bW, bH);
+          const offR = row % 2 === 0 ? 0 : bW / 2;
+          for (let col = -1; col * bW < p.w + bW; col++) {
+            ctx.strokeRect(p.x + col * bW + offR, p.y + row * bH, bW, bH);
+          }
         }
         ctx.fillStyle = '#4fc940'; ctx.fillRect(p.x, p.y, p.w, 8);
         ctx.fillStyle = '#3ab830'; ctx.fillRect(p.x, p.y + 8, p.w, 2);
       } else {
-        // Floating brick platform
-        ctx.fillStyle = '#c84b11'; ctx.fillRect(p.x, p.y, p.w, p.h);
-        ctx.strokeStyle = '#8b5e3c'; ctx.lineWidth = 1.5;
+        // Floating brick platform — orange
+        ctx.fillStyle = '#c84b11';
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+        ctx.strokeStyle = '#7a2e06'; ctx.lineWidth = 1.5;
         const bW = 14;
-        for (let col = 0; col * bW < p.w; col++) ctx.strokeRect(p.x + col * bW, p.y, bW, p.h);
+        for (let col = 0; col * bW < p.w; col++) {
+          ctx.strokeRect(p.x + col * bW, p.y, bW, p.h);
+        }
         ctx.fillStyle = '#e06020'; ctx.fillRect(p.x, p.y, p.w, 3);
       }
-    });
+    }
 
-    // Pipes
-    gs.pipes.forEach(pipe => {
-      if (pipe.x + pipe.w < gs.worldX - 20 || pipe.x > gs.worldX + W + 20) return;
-      const capExtra = 4; const capH = 8;
-      ctx.fillStyle = '#2e8b2e'; ctx.fillRect(pipe.x + 2, pipe.y + capH, pipe.w - 4, pipe.h - capH);
-      ctx.fillStyle = '#3cb33c'; ctx.fillRect(pipe.x + 4, pipe.y + capH, 4, pipe.h - capH);
-      ctx.fillStyle = '#2e8b2e'; ctx.fillRect(pipe.x - capExtra, pipe.y, pipe.w + capExtra * 2, capH);
-      ctx.fillStyle = '#3cb33c'; ctx.fillRect(pipe.x - capExtra + 2, pipe.y, 4, capH);
+    // Pipes — green with cap, solid walls
+    for (const pipe of gs.pipes) {
+      if (pipe.x + pipe.w < vLeft || pipe.x > vRight) continue;
+      const capH = 8; const capE = 4;
+      // Shaft
+      ctx.fillStyle = '#2e8b2e';
+      ctx.fillRect(pipe.x + 2, pipe.y + capH, pipe.w - 4, pipe.h - capH);
+      ctx.fillStyle = '#3cb33c';
+      ctx.fillRect(pipe.x + 4, pipe.y + capH, 5, pipe.h - capH);
       ctx.strokeStyle = '#1a5c1a'; ctx.lineWidth = 1;
       ctx.strokeRect(pipe.x + 2, pipe.y + capH, pipe.w - 4, pipe.h - capH);
-      ctx.strokeRect(pipe.x - capExtra, pipe.y, pipe.w + capExtra * 2, capH);
-    });
+      // Cap
+      ctx.fillStyle = '#2e8b2e';
+      ctx.fillRect(pipe.x - capE, pipe.y, pipe.w + capE * 2, capH);
+      ctx.fillStyle = '#3cb33c';
+      ctx.fillRect(pipe.x - capE + 2, pipe.y, 5, capH);
+      ctx.strokeStyle = '#1a5c1a'; ctx.lineWidth = 1;
+      ctx.strokeRect(pipe.x - capE, pipe.y, pipe.w + capE * 2, capH);
+    }
 
     // Coins
-    gs.coins.forEach(coin => {
-      if (coin.collected) return;
+    for (const coin of gs.coins) {
+      if (coin.collected) continue;
       const pulse = 0.82 + 0.18 * Math.sin(ts / 180 + coin.x * 0.05);
       ctx.globalAlpha = pulse;
-      ctx.fillStyle = '#ffd700'; ctx.beginPath(); ctx.arc(coin.x, coin.y, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath(); ctx.arc(coin.x, coin.y, 7, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#e6a800'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(coin.x, coin.y, 5, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.beginPath(); ctx.ellipse(coin.x - 1.5, coin.y - 2, 2, 1.2, -0.5, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
-    });
+    }
 
     // ? blocks
-    gs.qblocks.forEach(b => {
-      const bounce = b.hitAnim > 0 ? -Math.sin(b.hitAnim * Math.PI * 5) * 8 : Math.sin(ts / 290 + b.x * 0.1) * 2;
-      const bx = b.x; const by = b.y;
-      ctx.fillStyle = b.used ? '#6b4500' : '#e8a000'; ctx.fillRect(bx, by + bounce, 20, 20);
-      ctx.fillStyle = b.used ? '#7a5200' : '#ffc800'; ctx.fillRect(bx, by + bounce, 20, 3); ctx.fillRect(bx, by + bounce, 3, 20);
-      ctx.fillStyle = b.used ? '#3a2200' : '#a06000'; ctx.fillRect(bx, by + bounce + 17, 20, 3); ctx.fillRect(bx + 17, by + bounce, 3, 20);
+    for (const b of gs.qblocks) {
+      if (b.x < vLeft || b.x > vRight) continue;
+      const bounce = b.hitAnim > 0 ? -Math.sin(b.hitAnim * Math.PI * 5) * 7 : Math.sin(ts / 290 + b.x * 0.1) * 2;
+      const bx = b.x; const by = b.y + bounce;
+      ctx.fillStyle = b.used ? '#6b4500' : '#e8a000';
+      ctx.fillRect(bx, by, 20, 20);
+      ctx.fillStyle = b.used ? '#7a5200' : '#ffc800';
+      ctx.fillRect(bx, by, 20, 3);
+      ctx.fillRect(bx, by, 3, 20);
+      ctx.fillStyle = b.used ? '#3a2200' : '#a06000';
+      ctx.fillRect(bx, by + 17, 20, 3);
+      ctx.fillRect(bx + 17, by, 3, 20);
       if (!b.used) {
         ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('?', bx + 10, by + bounce + 14); ctx.textAlign = 'left';
+        ctx.fillText('?', bx + 10, by + 14); ctx.textAlign = 'left';
       }
-    });
+    }
 
-    // Enemies — Goomba style
-    gs.enemies.forEach(e => {
-      if (!e.alive) return;
-      if (e.flat) {
-        // Squished Goomba
-        ctx.fillStyle = '#8b4513';
-        ctx.fillRect(e.x, e.y + e.h - 6, e.w, 6);
-        ctx.fillStyle = '#c47a3a'; ctx.fillRect(e.x + 2, e.y + e.h - 5, e.w - 4, 3);
-        return;
-      }
+    // Enemies — Goomba
+    for (const e of gs.enemies) {
+      if (!e.alive) continue;
+      if (e.x + e.w < vLeft || e.x > vRight) continue;
       const { x: ex, y: ey, w: ew, h: eh } = e;
-      ctx.fillStyle = '#8b4513';
-      ctx.beginPath(); ctx.arc(ex + ew / 2, ey + eh * 0.42, ew * 0.5, Math.PI, 0);
-      ctx.rect(ex, ey + eh * 0.42, ew, eh * 0.58); ctx.fill();
-      ctx.fillStyle = '#c47a3a'; ctx.fillRect(ex + ew * 0.2, ey + eh * 0.48, ew * 0.6, eh * 0.25);
-      ctx.strokeStyle = '#2a0a00'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(ex + 3, ey + eh * 0.28); ctx.lineTo(ex + ew * 0.42, ey + eh * 0.36); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(ex + ew - 3, ey + eh * 0.28); ctx.lineTo(ex + ew * 0.58, ey + eh * 0.36); ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.fillRect(ex + 3, ey + eh * 0.33, 5, 5); ctx.fillRect(ex + ew - 8, ey + eh * 0.33, 5, 5);
-      ctx.fillStyle = '#111'; ctx.fillRect(ex + 4, ey + eh * 0.36, 3, 3); ctx.fillRect(ex + ew - 7, ey + eh * 0.36, 3, 3);
-      const bob = Math.sin(gs.frame * 0.22 + e.x * 0.1) * 2;
-      ctx.fillStyle = '#3a1a00';
-      ctx.fillRect(ex + 1, ey + eh - 5 + bob, 8, 4); ctx.fillRect(ex + ew - 9, ey + eh - 5 - bob, 8, 4);
-    });
+      if (e.flat) {
+        ctx.fillStyle = '#8b4513';
+        ctx.fillRect(ex, ey + eh - 6, ew, 6);
+        ctx.fillStyle = '#c47a3a';
+        ctx.fillRect(ex + 2, ey + eh - 5, ew - 4, 3);
+      } else {
+        // Body (mushroom dome)
+        ctx.fillStyle = '#8b4513';
+        ctx.beginPath();
+        ctx.arc(ex + ew / 2, ey + eh * 0.42, ew * 0.5, Math.PI, 0);
+        ctx.rect(ex, ey + eh * 0.42, ew, eh * 0.58);
+        ctx.fill();
+        // Belly
+        ctx.fillStyle = '#c47a3a';
+        ctx.fillRect(ex + ew * 0.2, ey + eh * 0.48, ew * 0.6, eh * 0.25);
+        // Angry brows
+        ctx.strokeStyle = '#2a0a00'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(ex + 3, ey + eh * 0.28); ctx.lineTo(ex + ew * 0.43, ey + eh * 0.38); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ex + ew - 3, ey + eh * 0.28); ctx.lineTo(ex + ew * 0.57, ey + eh * 0.38); ctx.stroke();
+        // Eyes
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(ex + 3, ey + eh * 0.33, 5, 5);
+        ctx.fillRect(ex + ew - 8, ey + eh * 0.33, 5, 5);
+        ctx.fillStyle = '#111';
+        ctx.fillRect(ex + 4, ey + eh * 0.36, 3, 3);
+        ctx.fillRect(ex + ew - 7, ey + eh * 0.36, 3, 3);
+        // Feet wobble
+        const bob = Math.sin(gs.frame * 0.22 + e.x * 0.1) * 2;
+        ctx.fillStyle = '#3a1a00';
+        ctx.fillRect(ex + 1, ey + eh - 5 + bob, 8, 4);
+        ctx.fillRect(ex + ew - 9, ey + eh - 5 - bob, 8, 4);
+      }
+    }
 
     // Fireballs
-    gs.fireballs.forEach(fb => {
-      if (fb.x < gs.worldX - 20 || fb.x > gs.worldX + W + 20) return;
-      ctx.save(); ctx.shadowColor = '#ff6600'; ctx.shadowBlur = 14;
-      ctx.fillStyle = 'rgba(255,120,0,0.3)'; ctx.beginPath(); ctx.arc(fb.x + 5, fb.y + 5, 10, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#ff6600'; ctx.beginPath(); ctx.arc(fb.x + 5, fb.y + 5, 6, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#ffee44'; ctx.beginPath(); ctx.arc(fb.x + 4, fb.y + 4, 3, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    });
-
-    // ── Player ──────────────────────────────────────────────────────────────────
-    const px = gs.playerX + gs.worldX;
-    const ph = gs.bigMario || gs.firepower ? PLAYER_H_BIG : PLAYER_H;
-    const pw = gs.bigMario || gs.firepower ? PLAYER_W + 4 : PLAYER_W;
-    const py = gs.playerY;
-
-    // Star glow
-    if (gs.starTimer > 0) {
-      const t = ts / 80;
-      ctx.save(); ctx.globalAlpha = 0.6;
-      ctx.shadowColor = '#ffff00'; ctx.shadowBlur = 24;
-      ctx.fillStyle = `hsl(${Math.floor(t * 60) % 360},100%,60%)`;
-      ctx.beginPath(); ctx.arc(px + pw / 2, py + ph / 2, pw, 0, Math.PI * 2); ctx.fill();
+    for (const fb of gs.fireballs) {
+      if (fb.dead) continue;
+      if (fb.x < vLeft || fb.x > vRight) continue;
+      ctx.save();
+      ctx.shadowColor = '#ff6600'; ctx.shadowBlur = 14;
+      ctx.fillStyle = 'rgba(255,120,0,0.3)';
+      ctx.beginPath(); ctx.arc(fb.x + 5, fb.y + 5, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ff6600';
+      ctx.beginPath(); ctx.arc(fb.x + 5, fb.y + 5, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffee44';
+      ctx.beginPath(); ctx.arc(fb.x + 4, fb.y + 4, 3, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
-    // Fire aura
+
+    // Player
+    const ph = gs.bigMario || gs.firepower ? PLAYER_H_BIG : PLAYER_H;
+    const pw = gs.bigMario || gs.firepower ? PLAYER_W + 4 : PLAYER_W;
+    const px = gs.playerWX;
+    const py = gs.playerY;
+    const scale = gs.bigMario || gs.firepower ? 1.4 : 1.0;
+
+    // Star flash aura
+    if (gs.starTimer > 0) {
+      ctx.save(); ctx.globalAlpha = 0.6;
+      ctx.shadowColor = '#ffff00'; ctx.shadowBlur = 24;
+      ctx.fillStyle = `hsl(${Math.floor(ts / 40) % 360},100%,60%)`;
+      ctx.beginPath(); ctx.arc(px + pw / 2, py + ph / 2, pw * 0.9, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     if (gs.firepower) {
-      ctx.save(); ctx.globalAlpha = 0.3 + 0.2 * Math.sin(ts / 80);
+      ctx.save(); ctx.globalAlpha = 0.25 + 0.15 * Math.sin(ts / 70);
       ctx.shadowColor = '#ff6600'; ctx.shadowBlur = 18;
-      ctx.fillStyle = '#ff6600'; ctx.beginPath(); ctx.arc(px + pw / 2, py + ph / 2, pw, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ff6600';
+      ctx.beginPath(); ctx.arc(px + pw / 2, py + ph / 2, pw * 0.9, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
 
     ctx.globalAlpha = gs.invincTimer > 0 ? (Math.floor(ts / 80) % 2 === 0 ? 0.25 : 1) : 1;
 
-    // Scale Mario body by power state
-    const scale = (gs.bigMario || gs.firepower) ? 1.4 : 1;
     const capColor = gs.firepower ? '#ffffff' : '#e52222';
-    // Cap
-    ctx.fillStyle = capColor; ctx.fillRect(px + 1, py, pw - 2, Math.round(7 * scale));
+    // Hat
+    ctx.fillStyle = capColor;
+    ctx.fillRect(px + 1, py, pw - 2, Math.round(7 * scale));
     ctx.fillRect(px - 1, py + Math.round(5 * scale), pw + 2, Math.round(4 * scale));
     // Face
-    ctx.fillStyle = '#f5c48a'; ctx.fillRect(px + 2, py + Math.round(8 * scale), pw - 4, Math.round(9 * scale));
+    ctx.fillStyle = '#f5c48a';
+    ctx.fillRect(px + 2, py + Math.round(8 * scale), pw - 4, Math.round(9 * scale));
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(px + 4, py + Math.round(10 * scale), Math.round(3 * scale), Math.round(3 * scale));
     ctx.fillRect(px + pw - Math.round(7 * scale), py + Math.round(10 * scale), Math.round(3 * scale), Math.round(3 * scale));
-    ctx.fillStyle = '#3a1a00'; ctx.fillRect(px + 3, py + Math.round(14 * scale), pw - 6, Math.round(2 * scale));
+    ctx.fillStyle = '#3a1a00';
+    ctx.fillRect(px + 3, py + Math.round(14 * scale), pw - 6, Math.round(2 * scale));
     // Shirt
     const shirtColor = gs.firepower ? '#ff6600' : '#e52222';
-    ctx.fillStyle = shirtColor; ctx.fillRect(px + 1, py + Math.round(17 * scale), pw - 2, Math.round(7 * scale));
-    ctx.fillStyle = '#3344cc'; ctx.fillRect(px, py + Math.round(21 * scale), pw, Math.round(6 * scale));
+    ctx.fillStyle = shirtColor;
+    ctx.fillRect(px + 1, py + Math.round(17 * scale), pw - 2, Math.round(6 * scale));
+    // Overalls
+    ctx.fillStyle = '#3344cc';
+    ctx.fillRect(px, py + Math.round(21 * scale), pw, Math.round(6 * scale));
     ctx.fillStyle = '#2233aa';
     ctx.fillRect(px + 3, py + Math.round(17 * scale), Math.round(4 * scale), Math.round(5 * scale));
     ctx.fillRect(px + pw - Math.round(7 * scale), py + Math.round(17 * scale), Math.round(4 * scale), Math.round(5 * scale));
     // Legs
     const moving = gs.leftHeld || gs.rightHeld;
-    const legPhase = moving && gs.onGround ? Math.sin(gs.frame * 0.28) : 0;
+    const legPhase = moving && gs.onGround ? Math.sin(gs.frame * 0.3) : 0;
     ctx.fillStyle = '#3344cc';
     ctx.fillRect(px + 2, py + ph - Math.round(9 * scale), Math.round(7 * scale), Math.round(9 * scale) + Math.round(legPhase * 3));
     ctx.fillRect(px + pw - Math.round(9 * scale), py + ph - Math.round(9 * scale), Math.round(7 * scale), Math.round(9 * scale) - Math.round(legPhase * 3));
+    // Shoes
     ctx.fillStyle = '#5c2e00';
-    ctx.fillRect(px + 1, py + ph - Math.round(2 * scale), Math.round(9 * scale), Math.round(3 * scale));
-    ctx.fillRect(px + pw - Math.round(10 * scale), py + ph - Math.round(2 * scale), Math.round(9 * scale), Math.round(3 * scale));
+    ctx.fillRect(px + 1, py + ph - Math.round(3 * scale), Math.round(9 * scale), Math.round(3 * scale));
+    ctx.fillRect(px + pw - Math.round(10 * scale), py + ph - Math.round(3 * scale), Math.round(9 * scale), Math.round(3 * scale));
 
     ctx.globalAlpha = 1;
-    ctx.restore();
+    ctx.restore(); // pop world-space transform
 
-    // Particles
-    gs.particles.forEach(p => {
+    // Particles (in screen space)
+    for (const p of gs.particles) {
       ctx.globalAlpha = Math.max(0, p.life);
       ctx.fillStyle = p.color;
-      ctx.beginPath(); ctx.arc(p.x + camX, p.y, 4, 0, Math.PI * 2); ctx.fill();
-    });
+      ctx.beginPath(); ctx.arc(p.x - gs.camX, p.y, 4, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.globalAlpha = 1;
 
     // HUD
-    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, W, 28);
+    ctx.fillStyle = 'rgba(0,0,0,0.58)'; ctx.fillRect(0, 0, W, 28);
     ctx.font = 'bold 13px monospace';
     ctx.fillStyle = '#ffd700'; ctx.fillText(`SCORE: ${gs.score}`, 6, 19);
     ctx.fillStyle = '#ffd700'; ctx.fillText(`COINS: ${gs.coinsCollected}`, 140, 19);
+    // Power indicator
+    if (gs.starTimer > 0) {
+      ctx.fillStyle = '#ffff00'; ctx.fillText(`STAR ${gs.starTimer.toFixed(1)}s`, W / 2 - 38, 19);
+    } else if (gs.firepower) {
+      ctx.fillStyle = '#ff6600'; ctx.fillText('FIRE', W / 2 - 14, 19);
+    } else if (gs.bigMario) {
+      ctx.fillStyle = '#ffffff'; ctx.fillText('BIG', W / 2 - 10, 19);
+    }
     ctx.fillStyle = '#ff4444'; ctx.fillText(`LIVES: ${gs.lives}`, W - 90, 19);
 
-    if (gs.starTimer > 0) { ctx.fillStyle = '#ffff00'; ctx.fillText('STAR!', W - 240, 19); }
-    else if (gs.firepower) { ctx.fillStyle = '#ff6600'; ctx.fillText('FIRE', W - 200, 19); }
-    else if (gs.bigMario) { ctx.fillStyle = '#ffffff'; ctx.fillText('BIG', W - 200, 19); }
-
     if (aiEnabledRef.current && !gs.aiDisabled && gs.alive) {
-      ctx.fillStyle = 'rgba(0,200,255,0.85)'; ctx.fillRect(W / 2 - 20, 4, 40, 18);
+      ctx.fillStyle = 'rgba(0,200,255,0.85)'; ctx.fillRect(W / 2 + 28, 4, 34, 18);
       ctx.fillStyle = '#000'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center';
-      ctx.fillText('AI', W / 2, 17); ctx.textAlign = 'left';
+      ctx.fillText('AI', W / 2 + 45, 17); ctx.textAlign = 'left';
     }
   }, []);
 
@@ -587,204 +723,337 @@ export function EndlessRunner() {
 
     if (gs.alive && gs.started) {
       gs.frame++;
-      const dt = dtMs / 1000;
+      const dtCapped = Math.min(dtMs, 50);
+      const dt = dtCapped / 1000;
 
       // Timers
-      if (gs.starTimer > 0) gs.starTimer -= dt;
-      if (gs.invincTimer > 0) gs.invincTimer -= dt;
-      if (gs.coyoteTimer > 0) gs.coyoteTimer -= dt;
+      if (gs.starTimer > 0) gs.starTimer = Math.max(0, gs.starTimer - dt);
+      if (gs.invincTimer > 0) gs.invincTimer = Math.max(0, gs.invincTimer - dt);
+      if (gs.coyoteTimer > 0) gs.coyoteTimer = Math.max(0, gs.coyoteTimer - dt);
 
-      // Horizontal movement (instant, Mario-style)
-      if (gs.leftHeld) gs.playerX = Math.max(PLAYER_X_MIN, gs.playerX - MOVE_SPEED);
-      if (gs.rightHeld) gs.playerX += MOVE_SPEED;
+      // Flat-enemy timers
+      for (const e of gs.enemies) {
+        if (e.flat && e.alive) {
+          e.flatTimer += dt;
+          if (e.flatTimer >= 0.4) e.alive = false;
+        }
+      }
 
-      // Jump
+      // ── Horizontal movement ──────────────────────────────────────────────────
+      let hSpeed: number;
+      if (gs.rightHeld) {
+        hSpeed = SPRINT_SPEED;
+      } else if (gs.leftHeld) {
+        hSpeed = SLOW_SPEED - BASE_RUN_SPEED; // net negative = slow/reverse
+      } else {
+        hSpeed = BASE_RUN_SPEED;
+      }
+      gs.playerWX += hSpeed;
+
+      // ── Pipe horizontal collision (push back) ────────────────────────────────
       const ph = gs.bigMario || gs.firepower ? PLAYER_H_BIG : PLAYER_H;
+      const pw = gs.bigMario || gs.firepower ? PLAYER_W + 4 : PLAYER_W;
+      for (const pipe of gs.pipes) {
+        const playerBottom = gs.playerY + ph;
+        // Only block if player is beside the pipe (not above it completely)
+        if (playerBottom > pipe.y + 2) {
+          // Check horizontal overlap
+          const overlapRight = gs.playerWX + pw > pipe.x && gs.playerWX < pipe.x + pipe.w;
+          if (overlapRight) {
+            // Push player back
+            const midPlayer = gs.playerWX + pw / 2;
+            if (midPlayer < pipe.x + pipe.w / 2) {
+              gs.playerWX = pipe.x - pw;
+            } else {
+              gs.playerWX = pipe.x + pipe.w;
+            }
+          }
+        }
+      }
+
+      // ── Vertical physics ─────────────────────────────────────────────────────
+      const prevSy = gs.playerY;
+
+      // Jump trigger
       const canJump = gs.onGround || gs.coyoteTimer > 0;
       if (gs.jumpQueued && canJump) {
-        gs.playerVY = JUMP_POWER;
-        gs.onGround = false; gs.coyoteTimer = 0; gs.jumpHeldTime = 0;
+        gs.vy = JUMP_VY;
+        gs.onGround = false;
+        gs.coyoteTimer = 0;
+        gs.jumpHeldTime = 0;
         sfxRef.current('jump');
       }
       gs.jumpQueued = false;
 
-      // Variable jump height
-      if (gs.jumpHeld && gs.playerVY < 0) {
+      // Variable-height gravity
+      if (gs.jumpHeld && gs.vy < 0) {
         gs.jumpHeldTime += dt;
-        gs.playerVY += gs.jumpHeldTime < 0.18 ? GRAVITY * 0.38 : GRAVITY;
+        gs.vy += gs.jumpHeldTime < JUMP_HOLD_MAX ? GRAVITY_HOLD : GRAVITY_FULL;
       } else {
-        gs.playerVY += GRAVITY;
+        gs.vy += GRAVITY_FULL;
       }
+      gs.vy = Math.min(gs.vy, FALL_CAP);
 
-      // Apply gravity, clamp fall speed
-      gs.playerVY = Math.min(gs.playerVY, 14);
-      gs.playerY += gs.playerVY;
+      const newY = prevSy + gs.vy;
+      gs.playerY = newY;
 
-      const wasOnGround = gs.onGround;
+      // ── Sweep collision: platforms ──────────────────────────────────────────
+      const prevBottom = prevSy + ph;
+      gs.wasOnGround = gs.onGround;
       gs.onGround = false;
 
-      // Platform collision
       for (const p of gs.platforms) {
-        const wx = gs.playerX + gs.worldX;
-        if (wx + PLAYER_W > p.x && wx < p.x + p.w &&
-            gs.playerY + ph > p.y && gs.playerY + ph < p.y + 20 && gs.playerVY >= 0) {
+        const newBottom = gs.playerY + ph;
+        const playerLeft = gs.playerWX;
+        const playerRight = gs.playerWX + pw;
+        // Horizontal overlap with platform
+        if (playerRight <= p.x || playerLeft >= p.x + p.w) continue;
+        // Sweep through top (landing)
+        if (gs.vy >= 0 && prevBottom <= p.y + 1 && newBottom > p.y) {
           gs.playerY = p.y - ph;
-          gs.playerVY = 0; gs.onGround = true;
+          gs.vy = 0;
+          gs.onGround = true;
+          break;
+        }
+        // Head bump (jumping into underside)
+        if (gs.vy < 0 && gs.playerY < p.y + p.h && prevSy >= p.y + p.h - 2) {
+          gs.playerY = p.y + p.h;
+          gs.vy = Math.max(0, gs.vy);
+        }
+      }
+
+      // Pipe tops — also standable via sweep
+      for (const pipe of gs.pipes) {
+        const newBottom = gs.playerY + ph;
+        const playerLeft = gs.playerWX;
+        const playerRight = gs.playerWX + pw;
+        if (playerRight <= pipe.x - 4 || playerLeft >= pipe.x + pipe.w + 4) continue;
+        if (gs.vy >= 0 && prevBottom <= pipe.y + 1 && newBottom > pipe.y) {
+          gs.playerY = pipe.y - ph;
+          gs.vy = 0;
+          gs.onGround = true;
           break;
         }
       }
 
-      if (wasOnGround && !gs.onGround && gs.playerVY >= 0) gs.coyoteTimer = Math.max(gs.coyoteTimer, 0.11);
+      // Coyote time
+      if (gs.wasOnGround && !gs.onGround && gs.vy >= 0) {
+        gs.coyoteTimer = Math.max(gs.coyoteTimer, COYOTE_TIME);
+      }
       if (gs.onGround) { gs.coyoteTimer = 0; gs.jumpHeldTime = 0; }
 
-      // Camera scroll right only
-      if (gs.playerX > CAMERA_RIGHT) {
-        const dx = gs.playerX - CAMERA_RIGHT;
-        gs.worldX += dx;
-        gs.playerX = CAMERA_RIGHT;
+      // ── Camera: scroll so player stays at PLAYER_X_SCREEN ───────────────────
+      const targetCamX = gs.playerWX - PLAYER_X_SCREEN;
+      if (targetCamX > gs.camX) {
+        const dx = targetCamX - gs.camX;
+        gs.camX = targetCamX;
         gs.score += Math.floor(dx);
       }
+      // Don't let camera go left past start
+      if (gs.camX < 0) gs.camX = 0;
+      // Don't let player go behind left of screen
+      if (gs.playerWX < gs.camX + PLAYER_X_MIN) {
+        gs.playerWX = gs.camX + PLAYER_X_MIN;
+      }
 
-      // Spawn more terrain
-      while (gs.spawnEdge < gs.worldX + W + 600) spawnChunk(gs);
+      // ── Spawn more terrain ───────────────────────────────────────────────────
+      while (gs.spawnEdge < gs.camX + W + 700) spawnChunk(gs);
 
-      // Cull old objects
-      const cullX = gs.worldX - 200;
+      // ── Cull old objects (> 300px behind camera) ─────────────────────────────
+      const cullX = gs.camX - 300;
       gs.platforms = gs.platforms.filter(p => p.x + p.w > cullX);
       gs.pipes = gs.pipes.filter(p => p.x + p.w > cullX);
       gs.coins = gs.coins.filter(c => c.x > cullX);
       gs.enemies = gs.enemies.filter(e => e.x + e.w > cullX);
       gs.qblocks = gs.qblocks.filter(b => b.x > cullX);
-      gs.fireballs = gs.fireballs.filter(f => f.x < gs.worldX + W + 50);
+      gs.fireballs = gs.fireballs.filter(f => !f.dead && f.x < gs.camX + W + 60 && f.x > cullX);
+      gs.particles = gs.particles.filter(p => p.life > 0);
 
-      // Enemy AI
+      // ── Enemy AI ─────────────────────────────────────────────────────────────
+      const difficulty = Math.min(1, gs.score / 4000);
       for (const e of gs.enemies) {
-        if (!e.alive) continue;
+        if (!e.alive || e.flat) continue;
         e.x += e.vx;
-        // Turn at platform edges
-        let onPlat = false;
+
+        // Turn at platform edges: check ground 4px ahead in walk direction
+        const lookX = e.vx < 0 ? e.x - 4 : e.x + e.w + 4;
+        let groundAhead = false;
         for (const p of gs.platforms) {
-          if (e.x + e.w > p.x && e.x < p.x + p.w && e.y + e.h >= p.y - 1) { onPlat = true; break; }
+          if (lookX >= p.x && lookX <= p.x + p.w && p.y >= e.y + e.h - 2) {
+            groundAhead = true; break;
+          }
         }
-        if (!onPlat) e.vx = -e.vx;
+        if (!groundAhead) { e.vx = -e.vx; continue; }
+
         // Turn at pipes
         for (const pipe of gs.pipes) {
-          if (rectsOverlap(e.x, e.y, e.w, e.h, pipe.x - 2, pipe.y, pipe.w + 4, pipe.h)) { e.vx = -e.vx; break; }
+          if (rOvlp(e.x, e.y, e.w, e.h, pipe.x - 2, pipe.y, pipe.w + 4, pipe.h)) {
+            e.vx = -e.vx; break;
+          }
+        }
+
+        // Speed up slightly with difficulty
+        if (difficulty > 0.3) {
+          const sign = e.vx < 0 ? -1 : 1;
+          const baseSpeed = 0.9 + difficulty * 0.6;
+          e.vx = sign * Math.min(1.5, baseSpeed);
         }
       }
 
-      // Fireballs
-      for (let fi = gs.fireballs.length - 1; fi >= 0; fi--) {
-        const fb = gs.fireballs[fi];
+      // ── Fireballs ─────────────────────────────────────────────────────────────
+      for (const fb of gs.fireballs) {
+        if (fb.dead) continue;
         fb.x += fb.vx;
-        fb.vy += 0.4; fb.y += fb.vy;
-        // Bounce on ground
+        fb.vy += 0.45;
+        fb.y += fb.vy;
+        // Bounce on platform tops
         for (const p of gs.platforms) {
-          if (fb.x > p.x && fb.x < p.x + p.w && fb.y + 8 > p.y && fb.y < p.y + 8) {
-            fb.vy = -Math.abs(fb.vy) * 0.6; fb.y = p.y - 8; break;
+          if (fb.x > p.x && fb.x + 10 < p.x + p.w &&
+              fb.y + 10 >= p.y && fb.y < p.y + 10 && fb.vy > 0) {
+            fb.vy = -Math.abs(fb.vy) * 0.55;
+            fb.y = p.y - 10;
+            break;
           }
         }
-        // Hit enemy
-        let hit = false;
+        // Kill on pipe
+        for (const pipe of gs.pipes) {
+          if (rOvlp(fb.x, fb.y, 10, 10, pipe.x, pipe.y, pipe.w, pipe.h)) {
+            fb.dead = true; break;
+          }
+        }
+        if (fb.dead) continue;
+        // Kill enemy
         for (const e of gs.enemies) {
           if (!e.alive || e.flat) continue;
-          if (fb.x < e.x + e.w && fb.x + 8 > e.x && fb.y < e.y + e.h && fb.y + 8 > e.y) {
-            e.alive = false; gs.score += 200; hit = true;
+          if (rOvlp(fb.x, fb.y, 10, 10, e.x, e.y, e.w, e.h)) {
+            e.alive = false;
+            gs.score += 200;
+            fb.dead = true;
             if (showParticlesRef.current) {
-              for (let pi = 0; pi < 6; pi++)
-                gs.particles.push({ x: e.x + e.w / 2, y: e.y + e.h / 2, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 4, color: pi % 2 ? '#ff6600' : '#ffcc00', life: 0.6 });
+              for (let i = 0; i < 6; i++) {
+                gs.particles.push({
+                  x: e.x + e.w / 2, y: e.y + e.h / 2,
+                  vx: (Math.random() - 0.5) * 6, vy: -2 - Math.random() * 3,
+                  color: i % 2 ? '#ff6600' : '#ffcc00', life: 0.6,
+                });
+              }
             }
             break;
           }
         }
-        if (hit) { gs.fireballs.splice(fi, 1); continue; }
       }
 
-      // ? block hit from below (player jumps up into it)
-      const wx = gs.playerX + gs.worldX;
+      // ── ? block hit from below ────────────────────────────────────────────────
       for (const b of gs.qblocks) {
-        if (b.used || b.hitAnim > 0) continue;
-        if (gs.playerVY < 0 &&
-            wx + PLAYER_W > b.x + 1 && wx < b.x + 19 &&
-            gs.playerY <= b.y + 20 && gs.playerY > b.y - 2) {
-          b.used = true; b.hitAnim = 0.4;
-          gs.playerVY = Math.max(0, gs.playerVY + 3);
-          // Spawn item
+        if (b.hitAnim > 0) b.hitAnim = Math.max(0, b.hitAnim - dt);
+        if (b.used) continue;
+        // Player head hits underside
+        if (gs.vy < 0 &&
+            gs.playerWX + pw > b.x + 1 && gs.playerWX < b.x + 19 &&
+            gs.playerY <= b.y + 20 && gs.playerY >= b.y - 4) {
+          b.used = true;
+          b.hitAnim = 0.35;
+          gs.vy = Math.max(0, gs.vy + 2);
           if (b.item === 'coin') {
-            gs.coinsCollected++; gs.score += 10;
+            gs.coinsCollected++;
+            gs.score += 10;
+            if (showParticlesRef.current) {
+              gs.particles.push({ x: b.x + 10, y: b.y - 8, vx: 0, vy: -3.5, color: '#ffd700', life: 0.6 });
+            }
           } else if (b.item === 'mushroom') {
-            if (!gs.bigMario && !gs.firepower) gs.bigMario = true;
-          } else if (b.item === 'fireball') {
-            gs.firepower = true; gs.bigMario = true;
+            if (!gs.bigMario && !gs.firepower) {
+              gs.bigMario = true;
+              gs.playerY -= (PLAYER_H_BIG - PLAYER_H); // shift up when growing
+            }
+          } else if (b.item === 'fire') {
+            gs.firepower = true;
+            gs.bigMario = true;
+            if (!gs.bigMario) gs.playerY -= (PLAYER_H_BIG - PLAYER_H);
           } else if (b.item === 'star') {
             gs.starTimer = 10;
           }
-          if (showParticlesRef.current) {
-            for (let ci = 0; ci < 6; ci++)
-              gs.particles.push({ x: b.x + 10, y: b.y - 10, vx: (Math.random() - 0.5) * 3, vy: -3 - Math.random() * 2, color: '#ffd700', life: 0.6 });
-          }
           sfxRef.current('jump');
+          if (showParticlesRef.current) {
+            for (let i = 0; i < 5; i++) {
+              gs.particles.push({
+                x: b.x + 10, y: b.y - 6,
+                vx: (Math.random() - 0.5) * 3, vy: -2.5 - Math.random() * 2,
+                color: '#ffd700', life: 0.55,
+              });
+            }
+          }
         }
-        if (b.hitAnim > 0) b.hitAnim = Math.max(0, b.hitAnim - dt);
       }
 
-      // Coin collection
+      // ── Coin collection ────────────────────────────────────────────────────────
       for (const coin of gs.coins) {
-        if (!coin.collected &&
-            Math.hypot(coin.x - (wx + PLAYER_W / 2), coin.y - (gs.playerY + ph / 2)) < 26) {
+        if (coin.collected) continue;
+        const cx = gs.playerWX + pw / 2;
+        const cy = gs.playerY + ph / 2;
+        if (Math.hypot(coin.x - cx, coin.y - cy) < 24) {
           coin.collected = true;
-          gs.coinsCollected++; gs.score += 10;
-          if (showParticlesRef.current)
+          gs.coinsCollected++;
+          gs.score += 10;
+          if (showParticlesRef.current) {
             gs.particles.push({ x: coin.x, y: coin.y, vx: 0, vy: -3, color: '#ffd700', life: 0.45 });
+          }
         }
       }
 
-      // Pipe collision (treat as wall)
-      for (const pipe of gs.pipes) {
-        if (rectsOverlap(wx, gs.playerY, PLAYER_W, ph, pipe.x - 1, pipe.y, pipe.w + 2, pipe.h)) {
-          takeDamage(gs);
-          break;
-        }
-      }
-
-      // Enemy collision
-      const playerRect = { x: wx, y: gs.playerY, w: PLAYER_W, h: ph };
+      // ── Enemy collision ────────────────────────────────────────────────────────
       for (const e of gs.enemies) {
         if (!e.alive || e.flat) continue;
-        if (rectsOverlap(playerRect.x, playerRect.y, playerRect.w, playerRect.h, e.x, e.y, e.w, e.h)) {
-          if (gs.starTimer > 0) {
-            // Star kills enemy
-            e.alive = false; gs.score += 200;
-          } else if (gs.playerVY > 0 && gs.playerY + ph < e.y + e.h * 0.55) {
-            // Stomp
-            e.flat = true;
-            gs.playerVY = -7;
-            gs.stompChain++;
-            gs.score += Math.min(gs.stompChain, 5) * 100;
-            sfxRef.current('jump');
-            setTimeout(() => { e.alive = false; }, 400);
-            if (showParticlesRef.current) {
-              for (let si = 0; si < 6; si++)
-                gs.particles.push({ x: e.x + e.w / 2, y: e.y + e.h / 2, vx: (Math.random() - 0.5) * 5, vy: -2 - Math.random() * 2, color: '#ffd700', life: 0.45 });
+        if (!rOvlp(gs.playerWX, gs.playerY, pw, ph, e.x, e.y, e.w, e.h)) continue;
+        if (gs.starTimer > 0) {
+          e.alive = false;
+          gs.score += 200;
+          continue;
+        }
+        // Stomp: falling AND player bottom within 10px of enemy top AND horizontal overlap
+        const playerBottom = gs.playerY + ph;
+        const enemyTop = e.y;
+        if (gs.vy > 0 && playerBottom - enemyTop <= 10) {
+          e.flat = true;
+          e.flatTimer = 0;
+          gs.vy = -8;
+          gs.stompChain++;
+          gs.score += Math.min(gs.stompChain, 5) * 100;
+          sfxRef.current('jump');
+          if (showParticlesRef.current) {
+            for (let i = 0; i < 6; i++) {
+              gs.particles.push({
+                x: e.x + e.w / 2, y: e.y + e.h / 2,
+                vx: (Math.random() - 0.5) * 5, vy: -2 - Math.random() * 2,
+                color: '#ffd700', life: 0.45,
+              });
             }
-          } else {
-            takeDamage(gs);
           }
-          break;
+        } else {
+          takeDamage(gs);
+        }
+        break;
+      }
+
+      // ── Fell into pit ──────────────────────────────────────────────────────────
+      if (gs.playerY > H + 60) {
+        gs.bigMario = false;
+        gs.firepower = false;
+        takeDamage(gs);
+        if (gs.alive) {
+          gs.playerWX = gs.camX + PLAYER_X_SCREEN;
+          gs.playerY = GROUND_Y - PLAYER_H;
+          gs.vy = 0;
+          gs.onGround = true;
         }
       }
 
-      // Fell into pit
-      if (gs.playerY > H + 40) {
-        gs.bigMario = false; gs.firepower = false;
-        takeDamage(gs);
+      // ── Particles ──────────────────────────────────────────────────────────────
+      for (const p of gs.particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.12;
+        p.life -= 0.04;
       }
-
-      // Particles
-      gs.particles = gs.particles.filter(p => {
-        p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.life -= 0.04;
-        return p.life > 0;
-      });
 
       if (gs.score > gs.bestSession) gs.bestSession = gs.score;
     }
@@ -817,7 +1086,9 @@ export function EndlessRunner() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (['Space', 'ArrowUp', 'KeyW', 'ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD', 'KeyF'].includes(e.code)) e.preventDefault();
+      if (['Space', 'ArrowUp', 'KeyW', 'ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD', 'KeyF'].includes(e.code)) {
+        e.preventDefault();
+      }
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') handleJump();
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') handleLeft();
       if (e.code === 'ArrowRight' || e.code === 'KeyD') handleRight();
@@ -850,7 +1121,7 @@ export function EndlessRunner() {
             { id: 'right', label: '▶', onPress: handleRight, onRelease: handleRightRelease },
             { id: 'fire', label: 'FIRE', onPress: shootFireball, tone: 'danger' },
           ]}
-          hint="◀ ▶ to move · JUMP to hop (hold for height) · collect ? blocks then FIRE"
+          hint="Auto-runs right · JUMP (hold = higher) · ◀ = slow/reverse · FIRE = fireball"
         />
       )}
     >
@@ -867,11 +1138,11 @@ export function EndlessRunner() {
         />
         <GameOverlay
           visible={phase !== 'playing'}
-          eyebrow={phase === 'ready' ? 'Touch Run' : 'Run Ended'}
-          title={phase === 'ready' ? 'Jump, stomp, collect coins!' : 'Try again?'}
+          eyebrow={phase === 'ready' ? 'Mario Run' : 'Run Ended'}
+          title={phase === 'ready' ? 'Auto-runs right!' : 'Try again?'}
           subtitle={phase === 'ready'
-            ? 'Run right, stomp Goombas, hit ? blocks from below for powerups!'
-            : 'Stomp Goombas, hit ? blocks from below, get Fire Flower to shoot!'}
+            ? 'Stomp Goombas, hit ? blocks from below for powerups!'
+            : 'Stomp Goombas · hit ? blocks · Fire Flower = shoot fireballs'}
           score={displayScore}
           best={best}
           primaryLabel={phase === 'ready' ? 'Start' : 'Play Again'}
