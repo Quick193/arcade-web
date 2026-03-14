@@ -1536,12 +1536,14 @@ export function ChessGame() {
   // Trigger AI when it's AI's turn
   useEffect(() => {
     if (!setup || gs.gameResult || gs.promotionPending) return;
+    // In human-vs-AI mode, pause the AI while waiting for the human to respond to a draw offer
+    if (!aiDemoMode && gs.drawOffer !== 'none') return;
     const aiColor = gameMode === 'pvp' ? null : (playerColor === 'w' ? 'b' : 'w');
     const shouldAI = aiOnRef.current || (gameMode === 'ai' && aiColor !== null && gs.turn === aiColor);
     if (shouldAI && !gs.aiDisabled) runAI(gs);
     return () => { if (aiTimerRef.current) clearTimeout(aiTimerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gs.turn, gs.gameResult, gs.promotionPending, gs.aiDisabled, gameMode, playerColor, setup, runAI]);
+  }, [gs.turn, gs.gameResult, gs.promotionPending, gs.aiDisabled, gs.drawOffer, gameMode, playerColor, setup, runAI, aiDemoMode]);
 
   useEffect(() => {
     if (!setup || !aiDemoMode) return;
@@ -2163,6 +2165,22 @@ export function ChessGame() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gs.history.length]);
 
+  // In AI demo mode (both sides AI), auto-resolve draw offers — no human needed
+  useEffect(() => {
+    if (!aiDemoMode || gs.drawOffer === 'none' || gs.gameResult) return;
+    const timer = setTimeout(() => {
+      // Respond from the perspective of the side being asked (NOT the offering side)
+      // evalScore is from White's POV: positive = White winning
+      const acceptDraw = Math.abs(gs.evalScore) <= 0.6;
+      setGs(prev => {
+        if (prev.drawOffer === 'none') return prev;
+        if (acceptDraw) return { ...prev, gameResult: 'Draw by agreement', drawOffer: 'none', drawOfferFrom: null };
+        return { ...prev, drawOffer: 'none', drawOfferFrom: null };
+      });
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [aiDemoMode, gs.drawOffer, gs.gameResult, gs.evalScore]);
+
   // Captured pieces & material display
   const capOrder: PieceType[] = ['Q', 'R', 'B', 'N', 'P'];
   const capCountW: Partial<Record<PieceType, number>> = {};
@@ -2383,7 +2401,8 @@ export function ChessGame() {
 
   // Draw offer overlay
   const DrawOfferOverlay = () => {
-    if (gs.drawOffer === 'none' || gs.gameResult) return null;
+    // In AI demo mode both sides are AI — resolved automatically, never block the UI
+    if (gs.drawOffer === 'none' || gs.gameResult || aiDemoMode) return null;
     // In PvP: show to opposing player. In AI: show to human player when AI offers
     const showToHuman = gameMode === 'pvp'
       ? gs.turn !== gs.drawOffer // show to the player whose turn it is (the opponent)
