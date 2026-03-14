@@ -492,14 +492,11 @@ export function EndlessRunner() {
         // Ground: brown fill + grass top
         ctx.fillStyle = '#8b5e3c';
         ctx.fillRect(p.x, p.y, p.w, p.h);
-        // Brick lines
-        ctx.strokeStyle = '#6b4020'; ctx.lineWidth = 1;
-        const bH = 12; const bW = 24;
-        for (let row = 0; row * bH < p.h; row++) {
-          const offR = row % 2 === 0 ? 0 : bW / 2;
-          for (let col = -1; col * bW < p.w + bW; col++) {
-            ctx.strokeRect(p.x + col * bW + offR, p.y + row * bH, bW, bH);
-          }
+        // Subtle horizontal mortar lines only (no vertical strokes)
+        ctx.fillStyle = '#6b4020';
+        const bH = 12;
+        for (let row = 1; row * bH < p.h; row++) {
+          ctx.fillRect(p.x, p.y + row * bH - 1, p.w, 1);
         }
         ctx.fillStyle = '#4fc940'; ctx.fillRect(p.x, p.y, p.w, 8);
         ctx.fillStyle = '#3ab830'; ctx.fillRect(p.x, p.y + 8, p.w, 2);
@@ -507,12 +504,8 @@ export function EndlessRunner() {
         // Floating brick platform — orange
         ctx.fillStyle = '#c84b11';
         ctx.fillRect(p.x, p.y, p.w, p.h);
-        ctx.strokeStyle = '#7a2e06'; ctx.lineWidth = 1.5;
-        const bW = 14;
-        for (let col = 0; col * bW < p.w; col++) {
-          ctx.strokeRect(p.x + col * bW, p.y, bW, p.h);
-        }
         ctx.fillStyle = '#e06020'; ctx.fillRect(p.x, p.y, p.w, 3);
+        ctx.fillStyle = '#7a2e06'; ctx.fillRect(p.x, p.y + p.h - 2, p.w, 2);
       }
     }
 
@@ -525,15 +518,11 @@ export function EndlessRunner() {
       ctx.fillRect(pipe.x + 2, pipe.y + capH, pipe.w - 4, pipe.h - capH);
       ctx.fillStyle = '#3cb33c';
       ctx.fillRect(pipe.x + 4, pipe.y + capH, 5, pipe.h - capH);
-      ctx.strokeStyle = '#1a5c1a'; ctx.lineWidth = 1;
-      ctx.strokeRect(pipe.x + 2, pipe.y + capH, pipe.w - 4, pipe.h - capH);
       // Cap
       ctx.fillStyle = '#2e8b2e';
       ctx.fillRect(pipe.x - capE, pipe.y, pipe.w + capE * 2, capH);
       ctx.fillStyle = '#3cb33c';
       ctx.fillRect(pipe.x - capE + 2, pipe.y, 5, capH);
-      ctx.strokeStyle = '#1a5c1a'; ctx.lineWidth = 1;
-      ctx.strokeRect(pipe.x - capE, pipe.y, pipe.w + capE * 2, capH);
     }
 
     // Coins
@@ -1006,10 +995,9 @@ export function EndlessRunner() {
           gs.score += 200;
           continue;
         }
-        // Stomp: falling AND player bottom within 10px of enemy top AND horizontal overlap
+        // Stomp: falling AND player bottom anywhere within enemy height
         const playerBottom = gs.playerY + ph;
-        const enemyTop = e.y;
-        if (gs.vy > 0 && playerBottom - enemyTop <= 10) {
+        if (gs.vy > 0 && playerBottom <= e.y + e.h) {
           e.flat = true;
           e.flatTimer = 0;
           gs.vy = -8;
