@@ -8,6 +8,7 @@ import { useAIDemo } from '../hooks/useAIDemo';
 import { useGameLoop } from '../hooks/useGameLoop';
 import { useMobileCanvasSize } from '../hooks/useMobileCanvasSize';
 import { useSfx } from '../hooks/useSfx';
+import { GamePausedContext } from '../contexts/GamePausedContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const W = 480;
@@ -291,6 +292,10 @@ export function EndlessRunner() {
   sfxRef.current = sfx;
   const showParticlesRef = useRef(state.settings.showParticles);
   showParticlesRef.current = state.settings.showParticles;
+  
+  const isHubPaused = React.useContext(GamePausedContext);
+  const isHubPausedRef = useRef(isHubPaused);
+  isHubPausedRef.current = isHubPaused;
 
   useEffect(() => {
     aiEnabledRef.current = aiDemoMode;
@@ -708,7 +713,7 @@ export function EndlessRunner() {
   const step = useCallback((dtMs: number, ts: number) => {
     const gs = gsRef.current;
     const ctx = ctxRef.current;
-    if (!ctx) return;
+    if (!ctx || isHubPausedRef.current) return;
 
     if (gs.alive && aiEnabledRef.current && !gs.aiDisabled) aiDecide(gs);
 

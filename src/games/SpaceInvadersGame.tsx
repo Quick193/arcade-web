@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/immutability */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useContext } from 'react';
 import { GameWrapper } from '../components/GameWrapper';
 import { GameOverlay } from '../components/GameOverlay';
 import { MobileControlBar } from '../components/MobileControlBar';
@@ -8,6 +8,8 @@ import { useAIDemo } from '../hooks/useAIDemo';
 import { useGameLoop } from '../hooks/useGameLoop';
 import { useMobileCanvasSize } from '../hooks/useMobileCanvasSize';
 import { useSfx } from '../hooks/useSfx';
+
+import { GamePausedContext } from '../contexts/GamePausedContext';
 
 const W = 320;
 const H = 480;
@@ -179,6 +181,10 @@ export function SpaceInvadersGame() {
   sfxRef.current = sfx;
   const showParticlesRef = useRef(state.settings.showParticles);
   showParticlesRef.current = state.settings.showParticles;
+  
+  const isHubPaused = useContext(GamePausedContext);
+  const isHubPausedRef = useRef(isHubPaused);
+  isHubPausedRef.current = isHubPaused;
 
   useEffect(() => {
     aiEnabledRef.current = aiDemoMode;
@@ -385,7 +391,7 @@ export function SpaceInvadersGame() {
   const step = useCallback((dtMs: number, now: number) => {
     const gs = gsRef.current;
     const ctx = ctxRef.current;
-    if (!ctx) return;
+    if (!ctx || isHubPausedRef.current) return;
 
     if (!gs.gameOver) {
       if (aiEnabledRef.current && !gs.aiDisabled) aiStep(gs);

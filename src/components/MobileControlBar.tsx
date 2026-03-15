@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useContext } from 'react';
+import { GamePausedContext } from '../contexts/GamePausedContext';
 
 interface MobileControlItem {
   id: string;
@@ -23,6 +24,8 @@ const DPAD_AREA: Record<string, string> = {
 };
 
 export function MobileControlBar({ items, hint, layout = 'row' }: MobileControlBarProps) {
+  const isHubPaused = useContext(GamePausedContext);
+
   function renderButton(item: MobileControlItem, extra?: React.CSSProperties) {
     const palette = item.tone === 'accent'
       ? { bg: 'linear-gradient(135deg, var(--accent-blue), var(--accent-cyan))', border: 'transparent', color: '#fff' }
@@ -34,7 +37,7 @@ export function MobileControlBar({ items, hint, layout = 'row' }: MobileControlB
       <button
         key={item.id}
         type="button"
-        disabled={item.disabled}
+        disabled={item.disabled || isHubPaused}
         onPointerDown={(event) => { event.preventDefault(); item.onPress(); }}
         onPointerUp={() => item.onRelease?.()}
         onPointerCancel={() => item.onRelease?.()}

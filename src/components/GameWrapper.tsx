@@ -120,6 +120,14 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
     prevGamesPlayedRef.current = current;
   }, [activeProfile.stats, gameId]);
 
+  // If the game resets its score to 0 (a new run started via custom Play Again overlay), reset game over state
+  useEffect(() => {
+    if (score === 0 || score === '0') {
+      gameOverRef.current = false;
+      prevGamesPlayedRef.current = activeProfile.stats[gameId]?.gamesPlayed ?? 0;
+    }
+  }, [score, gameId, activeProfile.stats]);
+
   // Whether this game was previously paused (has saved state worth keeping)
   const wasPreviouslyPaused = gameId ? (activeProfile.incompleteGameIds ?? []).includes(gameId) : false;
 
@@ -130,11 +138,6 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
   const handleHubPress = useCallback(() => {
     if (gameOverRef.current) {
       // Game already over — just leave
-      unmountGame(gameId);
-      return;
-    }
-    if (!onRestart) {
-      // Pre-game config/menu screen — leave silently
       unmountGame(gameId);
       return;
     }
@@ -151,7 +154,7 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
 
   const handlePauseConfirm = () => {
     pauseGame(true); // marks as incomplete, keeps in memory, goes to menu
-    setShowExitConfirm(false);
+    // Intentionally leaving showExitConfirm = true so it stays paused upon resume
   };
 
   // --- Keyboard: any key = game started; Escape = Hub ---------------------
@@ -167,8 +170,41 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
       }
     };
     window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
+    // Any mouse/touch interaction anywhere in the app during game = game started
+    const handlePointer = () => { gameStartedRef.current = true; };
+    window.addEventListener('pointerdown', handlePointer, { capture: true });
+    window.addEventListener('click', handlePointer, { capture: true });
+    
+    return () => {
+      window.removeEventListener('keydown', handleKey);
+      window.removeEventListener('pointerdown', handlePointer, { capture: true });
+      window.removeEventListener('click', handlePointer, { capture: true });
+    };
   }, [isActiveGame, handleHubPress]);
+
+  // --- Global Pause Interceptor --------------------------------------------
+  // When a pause sheet is open, intercept ALL keyboard events before they
+  // reach the game logic listeners.
+  const isPaused = showExitConfirm || showDemoSheet;
+
+  useEffect(() => {
+    import('../contexts/GamePausedContext').then(({ setGlobalPauseActive }) => {
+      setGlobalPauseActive(isPaused);
+    });
+    
+    if (!isPaused) return;
+    const blockKey = (e: KeyboardEvent) => {
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    };
+    // Use capture phase to catch the event before the document/window body
+    window.addEventListener('keydown', blockKey, { capture: true });
+    window.addEventListener('keyup', blockKey, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', blockKey, { capture: true });
+      window.removeEventListener('keyup', blockKey, { capture: true });
+    };
+  }, [isPaused]);
 
   // --- Restart -------------------------------------------------------------
   const handleRestart = () => {
@@ -218,7 +254,7 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
         </div>
       </div>
 
-      {/* Game area — capture-phase listener on this div tracks first interaction */}
+      {/* Game area */}
       <div
         ref={gameAreaRef}
         className="flex-1 flex items-center justify-center overflow-hidden relative px-3 py-3"
@@ -226,6 +262,15 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
         {/* Provide pause state so useGameLoop freezes canvas loops while sheet is open */}
         <GamePausedContext.Provider value={showExitConfirm || showDemoSheet}>
           {children}
+          {/* Overlay to block canvas touches when paused */}
+          {(showExitConfirm || showDemoSheet) && (
+            <div 
+              className="absolute inset-0 z-30 touch-none" 
+              onPointerDown={e => e.stopPropagation()} 
+              onPointerMove={e => e.stopPropagation()} 
+              onPointerUp={e => e.stopPropagation()} 
+            />
+          )}
         </GamePausedContext.Provider>
       </div>
 
@@ -277,9 +322,9 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
       {/* Pause confirmation sheet */}
       {showExitConfirm && (
         <ExitConfirmSheet
-          title="Pause game?"
-          body="Your game will be paused. Resume it any time from Continue Playing on the main menu."
-          confirmLabel="Pause & Leave"
+          title="Game Paused"
+          body="Your game is paused. Resume playing, or leave it paused and return to the menu."
+          confirmLabel="Exit to Menu"
           confirmStyle={{ background: 'var(--accent-blue)', color: '#fff' }}
           onConfirm={handlePauseConfirm}
           onCancel={() => setShowExitConfirm(false)}
@@ -308,8 +353,13 @@ export function GameWrapper({ title, score, extra, children, onRestart, controls
                 <button
                   key={mode}
                   onClick={() => {
+                    const wasOff = demo.mode === 'off';
                     demo.setMode(mode);
                     setShowDemoSheet(false);
+                    // If switching to manual play, reset the game state so objects don't keep drifting without AI
+                    if (mode === 'off' && !wasOff) {
+                      onRestart?.();
+                    }
                   }}
                   className="pressable rounded-xl border px-3 py-3 text-left"
                   style={{

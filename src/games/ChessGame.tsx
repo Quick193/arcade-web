@@ -1201,6 +1201,10 @@ export function ChessGame() {
   const [pvpTimers, setPvpTimers] = useState<{ w: number; b: number; inc: number } | null>(null);
   const pvpTimersRef = useRef<{ w: number; b: number; inc: number } | null>(null);
   pvpTimersRef.current = pvpTimers;
+  const [pvpStarted, setPvpStarted] = useState(false);
+  const pvpStartedRef = useRef(false);
+  pvpStartedRef.current = pvpStarted;
+  const [manualFlip, setManualFlip] = useState(false);
 
   const [gs, setGs] = useState<ChessState>(initChessState);
   const gsRef = useRef(gs);
@@ -1248,7 +1252,7 @@ export function ChessGame() {
   const playerColor = setup?.playerColor ?? 'w';
   const gameMode = setup?.mode ?? 'pvp';
   const difficulty = setup?.difficulty ?? 'medium';
-  const flip = gameMode === 'ai' ? playerColor === 'b' : gs.turn === 'b';
+  const flip = gameMode === 'ai' ? playerColor === 'b' : manualFlip;
   const projectedPremoveState = useMemo(
     () => getProjectedStateForPremoves(gs, premoves),
     [gs, premoves]
@@ -1588,9 +1592,10 @@ export function ChessGame() {
 
   // PvP timer tick
   useEffect(() => {
-    if (!pvpTimers || !setup || gameMode !== 'pvp' || gs.gameResult || gs.history.length === 0) return;
+    if (!pvpTimers || !setup || gameMode !== 'pvp' || gs.gameResult) return;
     const interval = setInterval(() => {
-      if (isHubPausedRef.current) return; // Hub sheet open — freeze clock
+      // Hub sheet open, not viewing game screen, or pvp not explicitly started -> freeze clock
+      if (isHubPausedRef.current || state.screen !== 'game' || !pvpStartedRef.current) return;
       setPvpTimers(prev => {
         if (!prev) return null;
         const turn = gsRef.current?.turn ?? 'w';
@@ -1607,7 +1612,7 @@ export function ChessGame() {
       });
     }, 100);
     return () => clearInterval(interval);
-  }, [pvpTimers, setup, gameMode, gs.gameResult, gs.history.length]);
+  }, [pvpTimers, setup, gameMode, gs.gameResult]);
 
   // Better eval: depth-2 minimax look-ahead, async after each move
   useEffect(() => {
@@ -1847,6 +1852,7 @@ export function ChessGame() {
   };
 
   const handlePointerDown = (e: React.MouseEvent | React.TouchEvent) => {
+    if (gameMode === 'pvp' && !pvpStartedRef.current) return;
     const isRightClick = 'button' in e && e.button === 2;
 
 
@@ -1992,6 +1998,7 @@ export function ChessGame() {
   };
 
   const handleClick = (e: React.MouseEvent) => {
+    if (gameMode === 'pvp' && !pvpStartedRef.current) return;
     // Left click canvas (for tap interface without dragging)
     const isRightClick = e.button === 2;
     if (isRightClick) return; // Right clicks handled by pointerDown/Up arrows logic
@@ -2085,6 +2092,8 @@ export function ChessGame() {
     setAnalysis(null);
     startTimeRef.current = Date.now();
     setPremoves([]);
+    setPvpStarted(false);
+    setManualFlip(false);
     const init = initChessState();
     // Init PvP timers
     if (s.mode === 'pvp' && s.initialMinutes > 0) {
@@ -2607,6 +2616,11 @@ export function ChessGame() {
                   onMenu={() => { setSetup(null); setPhase('mode'); setGs(initChessState()); setAnalysis(null); }}
                   onAnalyze={startAnalysis}
                   onSave={handleSave} />}
+                {gameMode === 'pvp' && !pvpStarted && !gs.gameResult && !analysis && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11 }}>
+                    <button onClick={() => setPvpStarted(true)} style={{ padding: '12px 24px', fontSize: 18, fontWeight: 'bold', background: '#3a6186', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>Start Game</button>
+                  </div>
+                )}
                 <DrawOfferOverlay />
                 <ResignConfirmOverlay />
               </div>
@@ -2668,6 +2682,12 @@ export function ChessGame() {
                   style={{ padding: '5px 8px', fontSize: 11, background: '#1e4d2b', color: '#ccc', border: '1px solid #2e7d32', borderRadius: 4, cursor: 'pointer' }}>
                   💾 Save
                 </button>
+                {gameMode === 'pvp' && (
+                  <button onClick={() => setManualFlip(f => !f)}
+                    style={{ padding: '5px 8px', fontSize: 11, background: manualFlip ? '#1a5276' : '#333', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+                    🔄 Flip Board
+                  </button>
+                )}
                 {!gs.gameResult && !analysis && (
                   <>
                     <button onClick={handleOfferDraw}
@@ -2732,6 +2752,11 @@ export function ChessGame() {
                 onMenu={() => { setSetup(null); setPhase('mode'); setGs(initChessState()); setAnalysis(null); }}
                 onAnalyze={startAnalysis}
                 onSave={handleSave} />}
+              {gameMode === 'pvp' && !pvpStarted && !gs.gameResult && !analysis && (
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11 }}>
+                  <button onClick={() => setPvpStarted(true)} style={{ padding: '12px 24px', fontSize: 18, fontWeight: 'bold', background: '#3a6186', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>Start Game</button>
+                </div>
+              )}
               <DrawOfferOverlay />
               <ResignConfirmOverlay />
             </div>
@@ -2757,6 +2782,12 @@ export function ChessGame() {
                 style={{ flex: 1, padding: '7px 2px', fontSize: 11, background: '#333', color: '#ccc', border: '1px solid #555', borderRadius: 6, cursor: 'pointer' }}>
                 ↩ Undo
               </button>
+              {gameMode === 'pvp' && (
+                <button onClick={() => setManualFlip(f => !f)}
+                  style={{ flex: 1, padding: '7px 2px', fontSize: 11, background: manualFlip ? '#1a5276' : '#333', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
+                  🔄 Flip
+                </button>
+              )}
               {gameMode === 'ai' && (
                 <button onClick={() => { const next = !drawingModeRef.current; drawingModeRef.current = next; setDrawingMode(next); }}
                   style={{ flex: 1, padding: '7px 2px', fontSize: 11, background: drawingMode ? '#6a0dad' : '#333', color: drawingMode ? '#fff' : '#ccc', border: `1px solid ${drawingMode ? '#9c27b0' : '#555'}`, borderRadius: 6, cursor: 'pointer' }}>

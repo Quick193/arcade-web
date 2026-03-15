@@ -4,7 +4,7 @@ import { GameOverlay } from '../components/GameOverlay';
 import { MobileControlBar } from '../components/MobileControlBar';
 import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
-import { GamePausedContext } from '../contexts/GamePausedContext';
+import { GamePausedContext, gamePauseEventTarget } from '../contexts/GamePausedContext';
 import { useSfx } from '../hooks/useSfx';
 
 const COLS = 10;
@@ -278,8 +278,20 @@ export function TetrisGame() {
   const { recordGame, bestScore, navigate, state } = useApp();
   const { isEnabled: aiDemoMode, isAdaptive, mode: demoMode, cycleMode, getActionWeight, recordPlayerAction } = useAIDemo('tetris');
   const isHubPaused = useContext(GamePausedContext);
-  const isHubPausedRef = useRef(false);
-  isHubPausedRef.current = isHubPaused;
+  const isHubPausedRef = useRef(isHubPaused);
+  
+  useEffect(() => {
+    isHubPausedRef.current = isHubPaused;
+  }, [isHubPaused]);
+
+  useEffect(() => {
+    const onGlobalPause = (e: Event) => {
+      const customEvent = e as CustomEvent<{ isPaused: boolean }>;
+      isHubPausedRef.current = customEvent.detail.isPaused;
+    };
+    gamePauseEventTarget.addEventListener('globalPause', onGlobalPause);
+    return () => gamePauseEventTarget.removeEventListener('globalPause', onGlobalPause);
+  }, []);
   const sfx = useSfx();
   const sfxRef = useRef(sfx);
   sfxRef.current = sfx;
@@ -590,6 +602,11 @@ export function TetrisGame() {
     function gameLoop(timestamp: number) {
       const gs = gsRef.current;
       if (!gs) return;
+      if (isHubPausedRef.current) {
+        gs.lastTime = timestamp; // Prevent dt spike
+        rafRef.current = requestAnimationFrame(gameLoop);
+        return;
+      }
       const dt = Math.min(timestamp - gs.lastTime, 100);
       gs.lastTime = timestamp;
       if (!gs.paused && !gs.gameOver && !isHubPausedRef.current) {

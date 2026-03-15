@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useContext } from 'rea
 import { GameWrapper } from '../components/GameWrapper';
 import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
-import { GamePausedContext } from '../contexts/GamePausedContext';
+import { GamePausedContext, gamePauseEventTarget } from '../contexts/GamePausedContext';
 
 const W = 320, H = 480;
 const PADDLE_W = 10, PADDLE_H = 60;
@@ -61,8 +61,20 @@ export function PongGame() {
   aiOnRef.current = aiDemoMode;
   const demoLabel = demoMode === 'adaptive' ? '🧠 Learn Me' : aiDemoMode ? '🤖 Classic AI' : '🎮 Demo Off';
   const isHubPaused = useContext(GamePausedContext);
-  const isHubPausedRef = useRef(false);
-  isHubPausedRef.current = isHubPaused;
+  const isHubPausedRef = useRef(isHubPaused);
+  
+  useEffect(() => {
+    isHubPausedRef.current = isHubPaused;
+  }, [isHubPaused]);
+
+  useEffect(() => {
+    const onGlobalPause = (e: Event) => {
+      const customEvent = e as CustomEvent<{ isPaused: boolean }>;
+      isHubPausedRef.current = customEvent.detail.isPaused;
+    };
+    gamePauseEventTarget.addEventListener('globalPause', onGlobalPause);
+    return () => gamePauseEventTarget.removeEventListener('globalPause', onGlobalPause);
+  }, []);
 
   const initGame = useCallback((m: GameMode) => {
     setMode(m);
@@ -448,7 +460,7 @@ export function PongGame() {
 
   if (mode === 'menu') {
     return (
-      <GameWrapper title="Pong 2.0">
+      <GameWrapper title="Pong 2.0" onRestart={() => initGame('1p')}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
           <h2 style={{ color: '#4fc3f7', fontFamily: 'monospace', margin: 0 }}>PONG 2.0</h2>
           {(['1p', '2p', 'tournament'] as GameMode[]).map(m => (

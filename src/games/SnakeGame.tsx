@@ -5,7 +5,7 @@ import { MobileControlBar } from '../components/MobileControlBar';
 import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
 import { useMobileCanvasSize } from '../hooks/useMobileCanvasSize';
-import { GamePausedContext } from '../contexts/GamePausedContext';
+import { GamePausedContext, gamePauseEventTarget } from '../contexts/GamePausedContext';
 import { useSfx } from '../hooks/useSfx';
 import { hapticLight } from '../utils/haptics';
 
@@ -125,8 +125,20 @@ export function SnakeGame() {
   const [displayLives, setDisplayLives] = useState(3);
   const [phase, setPhase] = useState<'playing' | 'gameover'>('playing');
   const isHubPaused = useContext(GamePausedContext);
-  const isHubPausedRef = useRef(false);
-  isHubPausedRef.current = isHubPaused;
+  const isHubPausedRef = useRef(isHubPaused);
+  
+  useEffect(() => {
+    isHubPausedRef.current = isHubPaused;
+  }, [isHubPaused]);
+
+  useEffect(() => {
+    const onGlobalPause = (e: Event) => {
+      const customEvent = e as CustomEvent<{ isPaused: boolean }>;
+      isHubPausedRef.current = customEvent.detail.isPaused;
+    };
+    gamePauseEventTarget.addEventListener('globalPause', onGlobalPause);
+    return () => gamePauseEventTarget.removeEventListener('globalPause', onGlobalPause);
+  }, []);
 
   const sfx = useSfx();
   const sfxRef = useRef(sfx);
@@ -385,6 +397,11 @@ export function SnakeGame() {
     function gameLoop(timestamp: number) {
       const gs = gsRef.current;
       if (!gs) return;
+      if (isHubPausedRef.current) {
+        gs.lastTime = timestamp; // prevent dt spike on resume
+        rafRef.current = requestAnimationFrame(gameLoop);
+        return;
+      }
       const dt = Math.min(timestamp - gs.lastTime, 50);
       gs.lastTime = timestamp;
       if (!gs.paused && !gs.gameOver && !isHubPausedRef.current) {

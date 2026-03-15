@@ -1,7 +1,7 @@
 import { useEffect, useRef, useContext } from 'react';
 import { useApp } from '../store/AppContext';
 import { GameIdContext } from '../contexts/GameIdContext';
-import { GamePausedContext } from '../contexts/GamePausedContext';
+import { GamePausedContext, gamePauseEventTarget, isGlobalPaused } from '../contexts/GamePausedContext';
 
 export function useGameLoop(onFrame: (dtMs: number, now: number) => void, enabled = true) {
   const callbackRef = useRef(onFrame);
@@ -18,10 +18,21 @@ export function useGameLoop(onFrame: (dtMs: number, now: number) => void, enable
   // but keep the RAF alive so resuming is instant with no dt spike.
   // Also pauses when the Hub confirmation sheet is open.
   const isActive = state.screen === 'game' && (!gameId || gameId === state.activeGame);
-  const isPausedRef = useRef(!isActive || isHubPaused);
+  const isPausedRef = useRef(!isActive || isHubPaused || isGlobalPaused);
+  
   useEffect(() => {
-    isPausedRef.current = !isActive || isHubPaused;
+    isPausedRef.current = !isActive || isHubPaused || isGlobalPaused;
   }, [isActive, isHubPaused]);
+
+  // Fallback listener for components inside GameWrapper that cannot read Context correctly.
+  useEffect(() => {
+    const onGlobalPause = (e: Event) => {
+      const customEvent = e as CustomEvent<{ isPaused: boolean }>;
+      isPausedRef.current = !isActive || customEvent.detail.isPaused;
+    };
+    gamePauseEventTarget.addEventListener('globalPause', onGlobalPause);
+    return () => gamePauseEventTarget.removeEventListener('globalPause', onGlobalPause);
+  }, [isActive]);
 
   useEffect(() => {
     if (!enabled) return;

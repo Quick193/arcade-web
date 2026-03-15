@@ -7,6 +7,7 @@ import { useApp } from '../store/AppContext';
 import { useAIDemo } from '../hooks/useAIDemo';
 import { useGameLoop } from '../hooks/useGameLoop';
 import { useMobileCanvasSize } from '../hooks/useMobileCanvasSize';
+import { GamePausedContext } from '../contexts/GamePausedContext';
 
 const W = 320;
 const H = 480;
@@ -379,10 +380,14 @@ export function AsteroidsGame() {
     }
   }, []);
 
+  const isHubPaused = React.useContext(GamePausedContext);
+  const isHubPausedRef = useRef(isHubPaused);
+  isHubPausedRef.current = isHubPaused;
+
   const step = useCallback(() => {
     const gs = gsRef.current;
     const ctx = ctxRef.current;
-    if (!ctx) return;
+    if (!ctx || isHubPausedRef.current) return;
 
     if (!gs.gameOver && aiEnabledRef.current && !gs.aiDisabled) {
       startRun(false);
